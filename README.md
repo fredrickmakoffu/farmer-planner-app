@@ -19,6 +19,8 @@ Architecture direction is documented in [docs/architecture.md](docs/architecture
 
 Architecture decisions are recorded in [docs/adr/README.md](docs/adr/README.md).
 
+The implementation starting point and ordered task list are documented in [docs/start-here.md](docs/start-here.md).
+
 ## Core Product Idea
 
 The primary interaction is a persistent single-button expense log. A tap creates a local expense event immediately, predicts category from routine and context, and defers correction to a lightweight review flow. The system is optimized for:
@@ -167,6 +169,7 @@ npx ignite-cli generate --list
 
 - Product requirements: [docs/prd-docs/# Tapp — Single-Button Family Budgeting PRD.md](docs/prd-docs/%23%20Tapp%20%E2%80%94%20Single-Button%20Family%20Budgeting%20PRD.md)
 - Architecture: [docs/architecture.md](docs/architecture.md)
+- Start here: [docs/start-here.md](docs/start-here.md)
 - ADR index: [docs/adr/README.md](docs/adr/README.md)
 
 ## Notes for Contributors

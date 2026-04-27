@@ -2,6 +2,8 @@
 
 ## Goals
 
+For the implementation sequence derived from this document and the PRD, see [docs/start-here.md](./start-here.md).
+
 This architecture is optimized for a React Native application built on Ignite Red with Expo Router, targeting long-term product development rather than prototype speed. The priorities are:
 
 - feature isolation and predictable growth
