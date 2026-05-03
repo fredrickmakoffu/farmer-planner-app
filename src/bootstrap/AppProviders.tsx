@@ -74,6 +74,15 @@ export function AppProviders({ children }: { children: ReactNode }) {
     if (fontError) throw fontError
   }, [fontError, fontsLoaded])
 
+  console.debug(
+    "APP: render - fontsLoaded:",
+    fontsLoaded,
+    "isI18nInitialized:",
+    isI18nInitialized,
+    "isBootstrapInitialized:",
+    isBootstrapInitialized,
+  )
+
   const loaded = fontsLoaded && isI18nInitialized && isBootstrapInitialized
 
   useEffect(() => {
