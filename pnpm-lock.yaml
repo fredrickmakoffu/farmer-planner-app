@@ -11,6 +11,9 @@ importers:
       '@expo-google-fonts/space-grotesk':
         specifier: ^0.4.0
         version: 0.4.1
+      '@expo-google-fonts/space-mono':
+        specifier: ^0.4.0
+        version: 0.4.2
       '@expo/metro-runtime':
         specifier: ~55.0.6
         version: 55.0.10(@expo/dom-webview@55.0.5)(expo@55.0.17)(react-dom@19.2.0(react@19.2.0))(react-native@0.83.6(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.2.0))(react@19.2.0)
@@ -26,6 +29,9 @@ importers:
       '@tanstack/react-query':
         specifier: ^5.100.7
         version: 5.100.7(react@19.2.0)
+      '@tapp/tapp-widget':
+        specifier: workspace:*
+        version: link:modules/tapp-widget
       apisauce:
         specifier: 3.1.1
         version: 3.1.1
@@ -195,6 +201,8 @@ importers:
       typescript:
         specifier: ~5.9.2
         version: 5.9.3
+
+  modules/tapp-widget: {}
 
 packages:
 
@@ -1403,6 +1411,9 @@ packages:
 
   '@expo-google-fonts/space-grotesk@0.4.1':
     resolution: {integrity: sha512-ZVQYw4Ok/pgcSJiufP8oRZE3AVxS9xtmKEUfsurbHkHNdMc/GA1gDXP9G4Cr7KL4KqSc0haexR2TuMigotCn4Q==}
+
+  '@expo-google-fonts/space-mono@0.4.2':
+    resolution: {integrity: sha512-soYY/qcKcnY7xjIhuMAVzJYxSdJ3Z8TjrtFHOB5SK7/4MEMGpoaw+CAVyvXnA3fsO7J7waIW+/5Z0Y0i/CfSeg==}
 
   '@expo/cli@55.0.26':
     resolution: {integrity: sha512-Ud9gpeGMF5RIL42LXvCw3k3mWK8rf/P2wu+Yrzz9Do1kcFKZeT9Vy2D/xukjdr/Xw+ELba87ThOot17GsPiWjw==}
@@ -7104,6 +7115,8 @@ snapshots:
   '@expo-google-fonts/material-symbols@0.4.34': {}
 
   '@expo-google-fonts/space-grotesk@0.4.1': {}
+
+  '@expo-google-fonts/space-mono@0.4.2': {}
 
   '@expo/cli@55.0.26(@expo/dom-webview@55.0.5)(@expo/metro-runtime@55.0.10)(expo-constants@55.0.15)(expo-font@55.0.6)(expo-router@55.0.13)(expo@55.0.17)(react-dom@19.2.0(react@19.2.0))(react-native@0.83.6(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.2.0))(react@19.2.0)(typescript@5.9.3)':
     dependencies:
