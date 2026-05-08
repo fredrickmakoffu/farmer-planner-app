@@ -283,7 +283,7 @@ const $body: ViewStyle = {
   justifyContent: "center",
   gap: 22,
   paddingHorizontal: spacing.s5,
-  paddingBottom: spacing.s8,
+  paddingBottom: 88,
 }
 
 const $tapButton: ViewStyle = {
