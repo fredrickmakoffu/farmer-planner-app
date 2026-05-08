@@ -5,6 +5,7 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons"
 
 import { Text } from "@/components/Text"
 import { container } from "@/bootstrap/container"
+import { loadString, saveString } from "@/utils/storage"
 import type { Category } from "@/modules/expenses/domain/entities/category"
 import type { CategoryRepository } from "@/modules/expenses/domain/repositories/category-repository"
 import type { ExpenseEvent } from "@/modules/expenses/domain/entities/expense-event"
@@ -28,6 +29,38 @@ import {
   elevation,
 } from "@/theme/tapp-tokens"
 import { typography } from "@/theme/typography"
+import { FamilyNameSheet } from "./family/FamilyNameSheet"
+import { InviteSheet } from "./family/InviteSheet"
+
+// ---- Constants -------------------------------------------------------------
+
+const FAMILY_NAME_KEY = "family.name"
+
+const DUMMY_MEMBERS = [
+  {
+    id: "amina",
+    name: "Amina",
+    color: catClay,
+    total: 4820,
+    categories: [
+      { name: "Groceries", color: catMango, spent: 2100, pct: 100 },
+      { name: "Transport", color: catFern, spent: 1400, pct: 67 },
+      { name: "Utilities", color: catLake, spent: 820, pct: 39 },
+      { name: "Coffee", color: catOrchid, spent: 500, pct: 24 },
+    ],
+  },
+  {
+    id: "daniel",
+    name: "Daniel",
+    color: catFern,
+    total: 2940,
+    categories: [
+      { name: "Transport", color: catFern, spent: 1600, pct: 100 },
+      { name: "Lunch", color: catClay, spent: 940, pct: 59 },
+      { name: "Airtime", color: catLake, spent: 400, pct: 25 },
+    ],
+  },
+]
 
 // ---- Helpers ---------------------------------------------------------------
 
@@ -52,11 +85,15 @@ function formatAmount(n: number): string {
   return n.toLocaleString("en-KE")
 }
 
-/** Returns heat color tuple [fill, background] based on % of budget consumed. */
 function heatColors(pct: number): [string, string] {
   if (pct >= 90) return [heatOver, heatOverBg]
   if (pct >= 70) return [heatWarn, heatWarnBg]
   return [heatGood, heatGoodBg]
+}
+
+function familyCodeFromName(name: string): string {
+  const clean = name.replace(/[^a-zA-Z0-9]/g, "").toUpperCase().slice(0, 6)
+  return `TAPP-${clean || "FAMILY"}`
 }
 
 // ---- Aggregation -----------------------------------------------------------
@@ -64,7 +101,7 @@ function heatColors(pct: number): [string, string] {
 type CategoryTotal = {
   category: Category
   spent: number
-  pct: number // % of a soft reference (largest category = 100 in this view)
+  pct: number
 }
 
 function aggregateByCategory(
@@ -115,6 +152,30 @@ function MemberDisc({ initial, color }: { initial: string; color: string }) {
   )
 }
 
+// ---- Inline category breakdown (expanded member) ---------------------------
+
+type MemberCategory = { name: string; color: string; spent: number; pct: number }
+
+function MemberCategoryBreakdown({ categories }: { categories: MemberCategory[] }) {
+  return (
+    <View style={$breakdown}>
+      {categories.map((cat, i) => {
+        const [barFill] = heatColors(cat.pct)
+        return (
+          <View key={cat.name} style={[i > 0 && $breakdownRowBorder]}>
+            <View style={$breakdownRow}>
+              <View style={[$catDot, { backgroundColor: cat.color }]} />
+              <Text style={$breakdownName}>{cat.name}</Text>
+              <HeatBar pct={cat.pct} color={barFill} />
+              <Text style={$breakdownAmount}>{"KSh " + formatAmount(cat.spent)}</Text>
+            </View>
+          </View>
+        )
+      })}
+    </View>
+  )
+}
+
 // ---- Section header --------------------------------------------------------
 
 function SectionLabel({ label }: { label: string }) {
@@ -129,6 +190,12 @@ export function FamilyScreen() {
   const [events, setEvents] = useState<ExpenseEvent[]>([])
   const [categoryMap, setCategoryMap] = useState<Map<number, Category>>(new Map())
   const [loading, setLoading] = useState(true)
+  const [familyName, setFamilyName] = useState(
+    () => loadString(FAMILY_NAME_KEY) ?? "Your household",
+  )
+  const [expandedMember, setExpandedMember] = useState<string | null>(null)
+  const [nameSheetOpen, setNameSheetOpen] = useState(false)
+  const [inviteSheetOpen, setInviteSheetOpen] = useState(false)
 
   const loadData = useCallback(async () => {
     const expenseRepo = container.resolve<ExpenseEventRepository>("expenseEventRepository")
@@ -152,20 +219,64 @@ export function FamilyScreen() {
 
   useEffect(() => { loadData() }, [loadData])
 
-  const weekTotal = events.reduce((s, e) => s + (e.amount ?? 0), 0)
-  const categoryTotals = aggregateByCategory(events, categoryMap)
+  function handleSaveName(name: string) {
+    saveString(FAMILY_NAME_KEY, name)
+    setFamilyName(name)
+  }
+
+  function toggleMember(id: string) {
+    setExpandedMember((prev) => (prev === id ? null : id))
+  }
+
+  const youTotal = events.reduce((s, e) => s + (e.amount ?? 0), 0)
+  const youCategories = aggregateByCategory(events, categoryMap)
+  const youMaxSpent = youCategories[0]?.spent ?? 1
+  const youCategoryBreakdown: MemberCategory[] = youCategories.map((c) => ({
+    name: c.category.name ?? "–",
+    color: resolveCategoryColor(c.category.name, c.category.color_hex),
+    spent: c.spent,
+    pct: Math.round((c.spent / youMaxSpent) * 100),
+  }))
+
+  const allMembers = [
+    {
+      id: "you",
+      name: "You",
+      color: catClay,
+      total: youTotal,
+      categories: youCategoryBreakdown,
+    },
+    ...DUMMY_MEMBERS,
+  ]
+
+  const grandTotal = allMembers.reduce((s, m) => s + m.total, 0)
+  const maxMemberSpend = Math.max(...allMembers.map((m) => m.total), 1)
+
+  const familyCode = familyCodeFromName(familyName)
 
   return (
     <View style={[$screen, { paddingTop: insets.top }]}>
       {/* Header */}
       <View style={$header}>
-        <Text style={$eyebrow}>Family</Text>
-        <Text style={$familyName}>Your household</Text>
-        <View style={$totalRow}>
-          <Text style={$currencyLabel}>KSh</Text>
-          <Text style={$totalAmount}>{formatAmount(weekTotal)}</Text>
+        <View>
+          <Text style={$eyebrow}>Family</Text>
+          <Text style={$familyName}>{familyName}</Text>
+          <View style={$totalRow}>
+            <Text style={$currencyLabel}>KSh</Text>
+            <Text style={$totalAmount}>{formatAmount(grandTotal)}</Text>
+          </View>
+          <Text style={$subHeader}>
+            {"This week · " + allMembers.length + " members · local + demo"}
+          </Text>
         </View>
-        <Text style={$subHeader}>This week · 1 member · local only</Text>
+        <Pressable
+          style={$settingsBtn}
+          onPress={() => setNameSheetOpen(true)}
+          accessibilityLabel="Family settings"
+          hitSlop={8}
+        >
+          <Ionicons name="settings-outline" size={20} color={ink3} />
+        </Pressable>
       </View>
 
       <ScrollView
@@ -176,35 +287,60 @@ export function FamilyScreen() {
         <View>
           <SectionLabel label="By member" />
           <View style={$card}>
-            {/* Single "you" row — multi-member comes with backend sync (Phase 2) */}
-            <View style={$row}>
-              <MemberDisc initial="Y" color={catClay} />
-              <View style={$rowMid}>
-                <Text style={$rowName}>You</Text>
-                <HeatBar pct={100} color={catClay} />
-              </View>
-              <Text style={$rowAmount}>{"KSh " + formatAmount(weekTotal)}</Text>
-            </View>
+            {allMembers.map((member, i) => {
+              const isExpanded = expandedMember === member.id
+              const pct = Math.round((member.total / maxMemberSpend) * 100)
+              const [barFill] = heatColors(pct)
+              return (
+                <View key={member.id} style={[i > 0 && $rowBorder]}>
+                  <Pressable
+                    style={$row}
+                    onPress={() => toggleMember(member.id)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${member.name} spending details`}
+                  >
+                    <MemberDisc initial={member.name[0]} color={member.color} />
+                    <View style={$rowMid}>
+                      <Text style={$rowName}>{member.name}</Text>
+                      <HeatBar pct={pct} color={barFill} />
+                    </View>
+                    <Text style={$rowAmount}>{"KSh " + formatAmount(member.total)}</Text>
+                    <Ionicons
+                      name={isExpanded ? "chevron-up" : "chevron-down"}
+                      size={14}
+                      color={ink4}
+                    />
+                  </Pressable>
+                  {isExpanded && member.categories.length > 0 && (
+                    <MemberCategoryBreakdown categories={member.categories} />
+                  )}
+                  {isExpanded && member.categories.length === 0 && (
+                    <View style={$breakdownEmpty}>
+                      <Text style={$breakdownEmptyText}>No spending this week.</Text>
+                    </View>
+                  )}
+                </View>
+              )
+            })}
           </View>
         </View>
 
         {/* Invite CTA */}
-        <Pressable style={$inviteRow} onPress={() => {}}>
+        <Pressable style={$inviteRow} onPress={() => setInviteSheetOpen(true)}>
           <View style={$inviteIcon}>
             <Ionicons name="person-add-outline" size={18} color={coral500} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={$inviteTitle}>Invite a family member</Text>
-            <Text style={$inviteSub}>Multi-device family sync — coming soon</Text>
+            <Text style={$inviteSub}>Share your family code: {familyCode}</Text>
           </View>
           <Ionicons name="chevron-forward" size={16} color={ink4} />
         </Pressable>
 
-        {/* By category */}
+        {/* By category (aggregated across all members) */}
         <View>
-          <SectionLabel label="By category" />
-
-          {categoryTotals.length === 0 ? (
+          <SectionLabel label="By category (all members)" />
+          {youCategories.length === 0 ? (
             <View style={$emptyWrap}>
               <MaterialCommunityIcons name="chart-bar" size={36} color={ink4} />
               <Text style={$emptyText}>No spending data yet.</Text>
@@ -212,14 +348,13 @@ export function FamilyScreen() {
             </View>
           ) : (
             <View style={$card}>
-              {categoryTotals.map((item, i) => {
+              {youCategories.map((item, i) => {
                 const color = resolveCategoryColor(item.category.name, item.category.color_hex)
                 const [barFill] = heatColors(item.pct)
                 return (
                   <View key={String(item.category.id ?? i)} style={[i > 0 && $rowBorder]}>
                     <View style={[$row, { paddingVertical: spacing.s4 }]}>
                       <View style={$catBlock}>
-                        {/* Name + % */}
                         <View style={$catNameRow}>
                           <View style={$catDotWrap}>
                             <View style={[$catDot, { backgroundColor: color }]} />
@@ -229,11 +364,7 @@ export function FamilyScreen() {
                             {item.pct}%
                           </Text>
                         </View>
-
-                        {/* Heat bar */}
                         <HeatBar pct={item.pct} color={barFill} />
-
-                        {/* Amount label */}
                         <Text style={$catAmountLabel}>
                           <Text style={$catAmountMono}>{"KSh " + formatAmount(item.spent)}</Text>
                           <Text style={$catAmountOf}>{" this week"}</Text>
@@ -247,6 +378,19 @@ export function FamilyScreen() {
           )}
         </View>
       </ScrollView>
+
+      <FamilyNameSheet
+        visible={nameSheetOpen}
+        currentName={familyName}
+        onClose={() => setNameSheetOpen(false)}
+        onSave={handleSaveName}
+      />
+
+      <InviteSheet
+        visible={inviteSheetOpen}
+        familyCode={familyCode}
+        onClose={() => setInviteSheetOpen(false)}
+      />
     </View>
   )
 }
@@ -261,6 +405,9 @@ const $header: ViewStyle = {
   paddingHorizontal: spacing.s5,
   paddingTop: spacing.s4,
   paddingBottom: spacing.s3,
+  flexDirection: "row",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
 }
 
 const $eyebrow: TextStyle = {
@@ -295,6 +442,13 @@ const $subHeader: TextStyle = {
   fontSize: 13, color: ink3,
   fontFamily: typography.primary.normal,
   marginTop: 3,
+}
+
+const $settingsBtn: ViewStyle = {
+  width: 36, height: 36, borderRadius: 18,
+  backgroundColor: paper2,
+  alignItems: "center", justifyContent: "center",
+  marginTop: spacing.s2,
 }
 
 const $scrollContent = {
@@ -369,6 +523,48 @@ const $bar: ViewStyle = {
 const $barFill: ViewStyle = {
   height: "100%" as any,
   borderRadius: radii.pill,
+}
+
+// ---- Member category breakdown ---------------------------------------------
+
+const $breakdown: ViewStyle = {
+  paddingHorizontal: spacing.s4,
+  paddingBottom: spacing.s3,
+  backgroundColor: paper,
+}
+
+const $breakdownRow: ViewStyle = {
+  flexDirection: "row",
+  alignItems: "center",
+  gap: spacing.s3,
+  paddingVertical: spacing.s2,
+}
+
+const $breakdownRowBorder: ViewStyle = {
+  borderTopWidth: 1,
+  borderTopColor: hairline,
+}
+
+const $breakdownName: TextStyle = {
+  fontSize: 13, color: ink2,
+  fontFamily: typography.primary.normal,
+  width: 80,
+}
+
+const $breakdownAmount: TextStyle = {
+  fontSize: 12, color: ink3,
+  fontFamily: typography.mono.normal,
+  marginLeft: spacing.s2,
+}
+
+const $breakdownEmpty: ViewStyle = {
+  paddingHorizontal: spacing.s4,
+  paddingBottom: spacing.s3,
+}
+
+const $breakdownEmptyText: TextStyle = {
+  fontSize: 13, color: ink4,
+  fontFamily: typography.primary.normal,
 }
 
 // ---- Category rows ---------------------------------------------------------
