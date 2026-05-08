@@ -227,7 +227,7 @@ export function DailyReviewScreen() {
         </View>
       ) : (
         <ScrollView
-          contentContainerStyle={[$scrollContent, { paddingBottom: insets.bottom + 24 }]}
+          contentContainerStyle={[$scrollContent, { paddingBottom: insets.bottom + 88 }]}
           showsVerticalScrollIndicator={false}
         >
           {events.length === 0 ? (

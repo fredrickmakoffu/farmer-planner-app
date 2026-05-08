@@ -280,7 +280,7 @@ export function FamilyScreen() {
       </View>
 
       <ScrollView
-        contentContainerStyle={[$scrollContent, { paddingBottom: insets.bottom + 32 }]}
+        contentContainerStyle={[$scrollContent, { paddingBottom: insets.bottom + 88 }]}
         showsVerticalScrollIndicator={false}
       >
         {/* By member */}
