@@ -171,15 +171,29 @@ Unit tests (Node/Jest) can be run normally with:
 pnpm test
 ```
 
+## Design implementation (completed)
+
+All six design branches have been merged to main:
+
+| Branch | What shipped |
+| --- | --- |
+| `feat/design-tokens` | `src/theme/tapp-tokens.ts` — full Tapp palette, SpaceMono font, Ignite theme update |
+| `feat/bottom-nav` | Expo Router `(tabs)` group — Tap · Review · Family bottom nav |
+| `feat/tap-screen` | Coral 200×200 tap button, hero amount, predicted category pill, last-event card |
+| `feat/review-screen` | Day-name header, event card list, tap-to-delete, daily total, Confirm day CTA |
+| `feat/categories-screen` | 6-tone color picker, bottom sheet add-category flow, category list |
+| `feat/family-screen` | Family header, per-member spend bar, per-category heat bars from live SQLite data |
+
 ## What remains (short list)
 
 - Decide whether to implement a robust on-device Drizzle runtime migration runner or keep idempotent `initDatabase()` and use `drizzle-kit` in development.
 - Implement prediction rules that use `routines` (V1 prediction exists; integrate routine windows + user-configured routines and learn corrections).
-- Add edit flows and UX polish for daily review (amount edits, notes), and add tests for these flows.
+- Add edit flows and UX polish for daily review (amount edits, notes, category reassignment).
 - Harden and add more repository and use-case tests; determine CI strategy for running integration tests on emulators or devices.
 - Add dependency-cruiser rules and enable them in CI to enforce architecture boundaries.
 - Implement a production-quality sync runner and outbox processing with retries, idempotence, and network sender.
 - Remove the development-only in-memory DB fallback before release (or guard it behind a clear runtime flag).
+- Family screen: replace placeholder "You" member row and invite CTA with real multi-device sync (Phase 2).
 
 ---
 
