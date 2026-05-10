@@ -1,18 +1,5 @@
-export interface SqlTransaction {
-  executeSql(
-    sql: string,
-    args?: any[],
-    success?: (tx: any, result: any) => void,
-    error?: (tx: any, err: any) => void,
-  ): void
-}
+import type { SQLiteDatabase } from "expo-sqlite"
 
-export interface Database {
-  transaction(
-    cb: (tx: SqlTransaction) => void,
-    error?: (err: any) => void,
-    success?: () => void,
-  ): void
-}
+export type Database = SQLiteDatabase
 
 export default Database

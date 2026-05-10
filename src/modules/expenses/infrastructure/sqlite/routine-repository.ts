@@ -1,9 +1,8 @@
 import { container } from "@/bootstrap/container"
+import type { Db } from "@/shared/infrastructure/database"
 
 import type { Routine } from "../../domain/entities/routine"
 import type { RoutineRepository } from "../../domain/repositories/routine-repository"
-
-const COLUMNS = "id, name, category_id, time_start, time_end, days_of_week, is_high_confidence, default_amount"
 
 function rowToRoutine(row: any): Routine {
   return {
@@ -18,118 +17,69 @@ function rowToRoutine(row: any): Routine {
   }
 }
 
-function resultRowsToArray(result: any): Routine[] {
-  const rows: Routine[] = []
-  for (let i = 0; i < result.rows.length; i += 1) {
-    rows.push(rowToRoutine(result.rows.item(i)))
-  }
-  return rows
-}
+const COLUMNS = "id, name, category_id, time_start, time_end, days_of_week, is_high_confidence, default_amount"
 
 export class SqliteRoutineRepository implements RoutineRepository {
-  private db: any
+  private db: Db
 
-  constructor(db?: any) {
-    this.db = db || container.resolve("database")
+  constructor(db?: Db) {
+    this.db = db ?? container.resolve<Db>("database")!
     if (!this.db) throw new Error("Database not available in container")
   }
 
   create(routine: Omit<Routine, "id">): Promise<Routine> {
-    return new Promise((resolve, reject) => {
-      this.db.transaction(
-        (tx: any) => {
-          tx.executeSql(
-            `INSERT INTO routines (name, category_id, time_start, time_end, days_of_week, is_high_confidence, default_amount)
-             VALUES (?, ?, ?, ?, ?, ?, ?);`,
-            [
-              routine.name,
-              routine.category_id,
-              routine.time_start,
-              routine.time_end,
-              routine.days_of_week,
-              routine.is_high_confidence ? 1 : 0,
-              routine.default_amount ?? 0,
-            ],
-            (_: any, result: any) => {
-              resolve({ ...routine, id: result.insertId })
-            },
-          )
-        },
-        (err: any) => reject(err),
-      )
-    })
+    const result = this.db.runSync(
+      `INSERT INTO routines (name, category_id, time_start, time_end, days_of_week, is_high_confidence, default_amount)
+       VALUES (?, ?, ?, ?, ?, ?, ?);`,
+      [
+        routine.name,
+        routine.category_id,
+        routine.time_start,
+        routine.time_end,
+        routine.days_of_week,
+        routine.is_high_confidence ? 1 : 0,
+        routine.default_amount ?? 0,
+      ],
+    )
+    return Promise.resolve({ ...routine, id: result.lastInsertRowId })
   }
 
   findAll(): Promise<Routine[]> {
-    return new Promise((resolve, reject) => {
-      this.db.transaction(
-        (tx: any) => {
-          tx.executeSql(
-            `SELECT ${COLUMNS} FROM routines;`,
-            [],
-            (_: any, result: any) => resolve(resultRowsToArray(result)),
-          )
-        },
-        (err: any) => reject(err),
-      )
-    })
+    const rows = this.db.getAllSync(`SELECT ${COLUMNS} FROM routines;`) as any[]
+    return Promise.resolve(rows.map(rowToRoutine))
   }
 
   findById(id: number): Promise<Routine | undefined> {
-    return new Promise((resolve, reject) => {
-      this.db.transaction(
-        (tx: any) => {
-          tx.executeSql(
-            `SELECT ${COLUMNS} FROM routines WHERE id = ? LIMIT 1;`,
-            [id],
-            (_: any, result: any) => {
-              const rows = resultRowsToArray(result)
-              resolve(rows.length ? rows[0] : undefined)
-            },
-          )
-        },
-        (err: any) => reject(err),
-      )
-    })
+    const row = this.db.getFirstSync(
+      `SELECT ${COLUMNS} FROM routines WHERE id = ? LIMIT 1;`,
+      [id],
+    ) as any
+    return Promise.resolve(row ? rowToRoutine(row) : undefined)
   }
 
   update(routine: Routine): Promise<void> {
-    return new Promise((resolve, reject) => {
-      this.db.transaction(
-        (tx: any) => {
-          tx.executeSql(
-            `UPDATE routines
-             SET name = ?, category_id = ?, time_start = ?, time_end = ?,
-                 days_of_week = ?, is_high_confidence = ?, default_amount = ?
-             WHERE id = ?;`,
-            [
-              routine.name,
-              routine.category_id,
-              routine.time_start,
-              routine.time_end,
-              routine.days_of_week,
-              routine.is_high_confidence ? 1 : 0,
-              routine.default_amount ?? 0,
-              routine.id,
-            ],
-          )
-        },
-        (err: any) => reject(err),
-        () => resolve(),
-      )
-    })
+    this.db.runSync(
+      `UPDATE routines
+       SET name = ?, category_id = ?, time_start = ?, time_end = ?,
+           days_of_week = ?, is_high_confidence = ?, default_amount = ?
+       WHERE id = ?;`,
+      [
+        routine.name,
+        routine.category_id,
+        routine.time_start,
+        routine.time_end,
+        routine.days_of_week,
+        routine.is_high_confidence ? 1 : 0,
+        routine.default_amount ?? 0,
+        routine.id!,
+      ],
+    )
+    return Promise.resolve()
   }
 
   delete(id: number): Promise<void> {
-    return new Promise((resolve, reject) => {
-      this.db.transaction(
-        (tx: any) => {
-          tx.executeSql(`DELETE FROM routines WHERE id = ?;`, [id])
-        },
-        (err: any) => reject(err),
-        () => resolve(),
-      )
-    })
+    this.db.runSync(`DELETE FROM routines WHERE id = ?;`, [id])
+    return Promise.resolve()
   }
 }
 
