@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { LinearGradient } from "expo-linear-gradient"
 import { MaterialCommunityIcons } from "@expo/vector-icons"
 import { Ionicons } from "@expo/vector-icons"
+import { useRouter } from "expo-router"
 
 import { Text } from "@/components/Text"
 import { container } from "@/bootstrap/container"
@@ -135,6 +136,7 @@ function LastEventCard({
 // ---- Main screen -----------------------------------------------------------
 export function TapToLogScreen() {
   const insets = useSafeAreaInsets()
+  const router = useRouter()
   const scaleAnim = useRef(new Animated.Value(1)).current
 
   const [total, setTotal] = useState(0)
@@ -251,7 +253,9 @@ export function TapToLogScreen() {
             <Text style={$heroAmount}>{formatAmount(total)}</Text>
           </View>
         </View>
-        <Ionicons name="settings-outline" size={22} color={ink3} />
+        <Pressable onPress={() => router.push("/routines" as any)} hitSlop={12}>
+          <Ionicons name="settings-outline" size={22} color={ink3} />
+        </Pressable>
       </View>
 
       {/* Body */}
