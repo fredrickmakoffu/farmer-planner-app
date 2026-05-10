@@ -97,7 +97,7 @@ export function EditExpenseSheet({ visible, event, categories, onClose, onSave, 
   }
 
   return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
+    <Modal visible={visible} transparent statusBarTranslucent animationType="none" onRequestClose={onClose}>
       <Pressable style={$scrim} onPress={onClose} />
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}

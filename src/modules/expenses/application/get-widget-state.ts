@@ -25,7 +25,8 @@ export async function getWidgetState(
   nowMs?: number,
 ): Promise<WidgetState> {
   const predictedAt = nowMs ?? Date.now()
-  const categoryId = await predictCategory(categoryRepo, expenseRepo, routineRepo, predictedAt)
+  const prediction = await predictCategory(categoryRepo, expenseRepo, routineRepo, predictedAt)
+  const categoryId = prediction.categoryId
 
   if (categoryId !== null) {
     const category = await categoryRepo.findById(categoryId)

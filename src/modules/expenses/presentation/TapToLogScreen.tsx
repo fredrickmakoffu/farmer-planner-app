@@ -253,7 +253,7 @@ export function TapToLogScreen() {
             <Text style={$heroAmount}>{formatAmount(total)}</Text>
           </View>
         </View>
-        <Pressable onPress={() => router.push("/routines" as any)} hitSlop={12}>
+        <Pressable onPress={() => router.push("/settings" as any)} hitSlop={12}>
           <Ionicons name="settings-outline" size={22} color={ink3} />
         </Pressable>
       </View>

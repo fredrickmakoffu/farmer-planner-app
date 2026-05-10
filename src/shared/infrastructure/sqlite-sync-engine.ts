@@ -1,55 +1,36 @@
+import type { Db } from "@/shared/infrastructure/database"
 import type SyncEngine from "@/shared/contracts/sync"
 
 export class SqliteSyncEngine implements SyncEngine {
-  private db: any
+  private db: Db
 
-  constructor(db?: any) {
+  constructor(db: Db) {
+    if (!db) throw new Error("Database instance required for SqliteSyncEngine")
     this.db = db
-    if (!this.db) throw new Error("Database instance required for SqliteSyncEngine")
   }
 
-  async enqueue(payload: unknown): Promise<void> {
-    const createdAt = Date.now()
-    await new Promise<void>((resolve, reject) => {
-      this.db.transaction(
-        (tx: any) => {
-          tx.executeSql(`INSERT INTO outbox (payload, created_at) VALUES (?, ?);`, [
-            JSON.stringify(payload),
-            createdAt,
-          ])
-        },
-        (err: any) => reject(err),
-        () => resolve(),
-      )
-    })
+  enqueue(payload: unknown): Promise<void> {
+    this.db.runSync(
+      `INSERT INTO outbox (payload, created_at) VALUES (?, ?);`,
+      [JSON.stringify(payload), Date.now()],
+    )
+    return Promise.resolve()
   }
 
-  async flush(): Promise<void> {
-    // This minimal flush simply removes all outbox rows to simulate successful delivery.
-    // In real implementation this would POST each payload to a server and delete on success.
-    await new Promise<void>((resolve, reject) => {
-      this.db.transaction(
-        (tx: any) => {
-          tx.executeSql(
-            `SELECT id, payload FROM outbox ORDER BY created_at ASC;`,
-            [],
-            (_: any, result: any) => {
-              const ids: number[] = []
-              for (let i = 0; i < result.rows.length; i += 1) {
-                const row = result.rows.item(i)
-                ids.push(row.id)
-              }
+  flush(): Promise<void> {
+    const rows = this.db.getAllSync(
+      `SELECT id, payload FROM outbox ORDER BY created_at ASC;`,
+    ) as { id: number; payload: string }[]
 
-              for (const id of ids) {
-                tx.executeSql(`DELETE FROM outbox WHERE id = ?;`, [id])
-              }
-            },
-          )
-        },
-        (err: any) => reject(err),
-        () => resolve(),
-      )
+    if (rows.length === 0) return Promise.resolve()
+
+    // Minimal flush: remove all outbox rows (real impl would POST then delete)
+    this.db.withTransactionSync(() => {
+      for (const row of rows) {
+        this.db.runSync(`DELETE FROM outbox WHERE id = ?;`, [row.id])
+      }
     })
+    return Promise.resolve()
   }
 }
 

@@ -27,7 +27,7 @@ export default function TapRoute() {
         if (!expenseRepo || !categoryRepo) return
 
         const predicted = await predictCategory(categoryRepo, expenseRepo, routineRepo)
-        await createExpense(expenseRepo, 100, predicted ?? null, sync)
+        await createExpense(expenseRepo, 100, predicted.categoryId ?? null, sync)
 
         // Push updated prediction state back to the widget after the tap
         if (categoryRepo && expenseRepo && routineRepo) {

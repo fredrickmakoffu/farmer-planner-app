@@ -61,7 +61,7 @@ export function FamilyNameSheet({ visible, currentName, onClose, onSave }: Props
   }
 
   return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
+    <Modal visible={visible} transparent statusBarTranslucent animationType="none" onRequestClose={onClose}>
       <Pressable style={$scrim} onPress={onClose} />
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -155,7 +155,7 @@ const $input: TextStyle = {
   marginBottom: spacing.s2,
 }
 
-const $inputError: ViewStyle = { borderColor: coral500 }
+const $inputError: TextStyle = { borderColor: coral500 }
 
 const $errorText: TextStyle = {
   fontSize: 13, color: coral600,

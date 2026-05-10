@@ -13,8 +13,11 @@ import {
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons"
 
 import { Text } from "@/components/Text"
+import { container } from "@/bootstrap/container"
+import { createCategory } from "@/modules/expenses/application/create-category"
 import type { Category } from "@/modules/expenses/domain/entities/category"
 import type { Routine } from "@/modules/expenses/domain/entities/routine"
+import type { CategoryRepository } from "@/modules/expenses/domain/repositories/category-repository"
 import {
   paper,
   paper2,
@@ -37,6 +40,7 @@ import {
   elevation,
 } from "@/theme/tapp-tokens"
 import { typography } from "@/theme/typography"
+import { CategoryDisc, ICON_OPTIONS } from "../CategoriesScreen"
 
 // ---- helpers ---------------------------------------------------------------
 
@@ -152,7 +156,7 @@ function RoutineRow({ routine, category, isFirst, onTap }: RoutineRowProps) {
         onPress={handlePress}
         style={({ pressed }) => [$routineRow, pressed && $rowPressed]}
       >
-        <View style={[$dot, { backgroundColor: color }]} />
+        <CategoryDisc color={color} icon={category?.icon ?? "dots-horizontal"} size={28} />
         <View style={$rowMid}>
           <Text style={$routineName}>{routine.name}</Text>
           <Text style={$routineMeta}>{slotLabel(routine.time_start, routine.time_end)}</Text>
@@ -197,10 +201,13 @@ type AddFormProps = {
   categories: Category[]
   nowMinutes: number
   onSave: (routine: Omit<Routine, "id">) => void
+  onCategoryCreated: (cat: Category) => void
   onBack: () => void
 }
 
-function AddForm({ categories, nowMinutes, onSave, onBack }: AddFormProps) {
+const PALETTE_COLORS = [catClay, catMango, catFern, catLake, catOrchid, catStone]
+
+function AddForm({ categories, nowMinutes, onSave, onCategoryCreated, onBack }: AddFormProps) {
   const [label, setLabel] = useState("")
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(
     categories.length ? (categories[0].id ?? null) : null,
@@ -208,6 +215,28 @@ function AddForm({ categories, nowMinutes, onSave, onBack }: AddFormProps) {
   const [amount, setAmount] = useState("")
   const [selectedSlot, setSelectedSlot] = useState(closestSlotIndex(nowMinutes))
   const [days, setDays] = useState<127 | 62 | 65>(127)
+
+  const [newCatOpen, setNewCatOpen] = useState(false)
+  const [newCatName, setNewCatName] = useState("")
+  const [newCatColor, setNewCatColor] = useState(catClay)
+  const [newCatIcon, setNewCatIcon] = useState("silverware-fork-knife")
+  const [newCatSaving, setNewCatSaving] = useState(false)
+
+  async function handleNewCatSave() {
+    if (!newCatName.trim()) return
+    setNewCatSaving(true)
+    try {
+      const repo = container.resolve<CategoryRepository>("categoryRepository")
+      if (!repo) return
+      const created = await createCategory(repo, newCatName.trim(), newCatColor, newCatIcon, false)
+      setSelectedCategoryId(created.id ?? null)
+      setNewCatOpen(false)
+      setNewCatName("")
+      onCategoryCreated(created)
+    } finally {
+      setNewCatSaving(false)
+    }
+  }
 
   function handleSave() {
     const n = parseFloat(amount)
@@ -261,23 +290,67 @@ function AddForm({ categories, nowMinutes, onSave, onBack }: AddFormProps) {
       </View>
 
       {/* Category */}
-      <Text style={$fieldLabel}>Category</Text>
+      <View style={$catLabelRow}>
+        <Text style={$fieldLabel}>Category</Text>
+        <Pressable onPress={() => { setNewCatOpen((v) => !v); setNewCatName("") }} hitSlop={8}>
+          <Text style={$newCatLink}>{newCatOpen ? "Cancel" : "+ New category"}</Text>
+        </Pressable>
+      </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={$catScroll} contentContainerStyle={$catScrollContent}>
         {categories.map((cat) => {
-          const color = resolveCategoryColor(cat.name, cat.color_hex)
           const active = cat.id === selectedCategoryId
           return (
             <Pressable
               key={String(cat.id)}
               onPress={() => setSelectedCategoryId(cat.id ?? null)}
-              style={[$catPill, active && { backgroundColor: color, borderColor: color }]}
+              style={[$catPill, active && { backgroundColor: cat.color_hex, borderColor: cat.color_hex }]}
             >
-              <View style={[$catDot, { backgroundColor: color }]} />
+              <CategoryDisc color={cat.color_hex} icon={cat.icon ?? "dots-horizontal"} size={20} />
               <Text style={[$catPillText, active && $catPillTextActive]}>{cat.name}</Text>
             </Pressable>
           )
         })}
       </ScrollView>
+      {newCatOpen && (
+        <View style={$newCatForm}>
+          <TextInput
+            style={$textInput}
+            value={newCatName}
+            onChangeText={setNewCatName}
+            placeholder="Category name"
+            placeholderTextColor={ink4}
+            autoFocus
+          />
+          <View style={$newCatColorRow}>
+            {PALETTE_COLORS.map((c) => (
+              <Pressable
+                key={c}
+                onPress={() => setNewCatColor(c)}
+                style={[$miniSwatch, { backgroundColor: c }, newCatColor === c && $miniSwatchActive]}
+                hitSlop={6}
+              />
+            ))}
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={$iconScrollContent}>
+            {ICON_OPTIONS.map((ic) => (
+              <Pressable
+                key={ic}
+                onPress={() => setNewCatIcon(ic)}
+                style={[$iconCell, newCatIcon === ic && $iconCellActive]}
+              >
+                <MaterialCommunityIcons name={ic as any} size={18} color={newCatIcon === ic ? "white" : ink3} />
+              </Pressable>
+            ))}
+          </ScrollView>
+          <Pressable
+            onPress={handleNewCatSave}
+            disabled={newCatSaving || !newCatName.trim()}
+            style={({ pressed }) => [$confirmSmallBtn, (!newCatName.trim() || newCatSaving) && { opacity: 0.45 }, pressed && { opacity: 0.75 }]}
+          >
+            <Text style={$confirmSmallText}>Add &amp; select</Text>
+          </Pressable>
+        </View>
+      )}
 
       {/* Time slot */}
       <Text style={$fieldLabel}>When</Text>
@@ -335,6 +408,10 @@ export function PickRoutineSheet({
   onClose,
 }: PickRoutineSheetProps) {
   const [mode, setMode] = useState<"pick" | "add">("pick")
+  const [localCategories, setLocalCategories] = useState<Category[]>(categories)
+
+  // Keep localCategories in sync when categories prop changes (sheet reopens)
+  useState(() => { setLocalCategories(categories) })
 
   const categoryMap = new Map(categories.map((c) => [c.id, c]))
 
@@ -353,7 +430,7 @@ export function PickRoutineSheet({
   const timeStr = `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`
 
   return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
+    <Modal visible={visible} transparent statusBarTranslucent animationType="none" onRequestClose={onClose}>
       <Pressable style={$scrim} onPress={onClose} />
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -408,9 +485,10 @@ export function PickRoutineSheet({
           ) : (
             <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 24 }}>
               <AddForm
-                categories={categories}
+                categories={localCategories}
                 nowMinutes={nowMinutes}
                 onSave={handleSaveRoutine}
+                onCategoryCreated={(cat) => setLocalCategories((prev) => [...prev, cat])}
                 onBack={() => setMode("pick")}
               />
             </ScrollView>
@@ -750,4 +828,49 @@ const $saveBtnText: TextStyle = {
   fontSize: 15, color: "white",
   fontFamily: typography.primary.medium,
   letterSpacing: 0.1,
+}
+
+// ---- Inline new-category form ----------------------------------------------
+
+const $catLabelRow: ViewStyle = {
+  flexDirection: "row", justifyContent: "space-between", alignItems: "center",
+}
+
+const $newCatLink: TextStyle = {
+  fontSize: 12, color: coral500,
+  fontFamily: typography.primary.medium,
+}
+
+const $newCatForm: ViewStyle = {
+  backgroundColor: paper2,
+  borderRadius: radii.md,
+  borderWidth: 1, borderColor: hairline,
+  padding: spacing.s3,
+  gap: spacing.s3,
+}
+
+const $newCatColorRow: ViewStyle = { flexDirection: "row", gap: spacing.s2 }
+
+const $miniSwatch: ViewStyle = { width: 28, height: 28, borderRadius: 14 }
+
+const $miniSwatchActive: ViewStyle = { borderWidth: 2.5, borderColor: ink }
+
+const $iconScrollContent = { gap: spacing.s2, paddingVertical: spacing.s1 }
+
+const $iconCell: ViewStyle = {
+  width: 36, height: 36, borderRadius: radii.md,
+  alignItems: "center", justifyContent: "center",
+  backgroundColor: card,
+  borderWidth: 1, borderColor: hairline,
+}
+
+const $iconCellActive: ViewStyle = { backgroundColor: ink, borderColor: ink }
+
+const $confirmSmallBtn: ViewStyle = {
+  backgroundColor: coral500,
+  borderRadius: radii.pill,
+  paddingHorizontal: spacing.s4,
+  paddingVertical: spacing.s2,
+  alignItems: "center",
+  alignSelf: "flex-end",
 }

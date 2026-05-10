@@ -51,7 +51,7 @@ export function InviteSheet({ visible, familyCode, onClose }: Props) {
   }
 
   return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
+    <Modal visible={visible} transparent statusBarTranslucent animationType="none" onRequestClose={onClose}>
       <Pressable style={$scrim} onPress={onClose} />
       <Animated.View
         style={[
