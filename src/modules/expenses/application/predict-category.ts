@@ -2,6 +2,14 @@ import type { CategoryRepository } from "@/modules/expenses/domain/repositories/
 import type { ExpenseEventRepository } from "@/modules/expenses/domain/repositories/expense-event-repository"
 import type { RoutineRepository } from "@/modules/expenses/domain/repositories/routine-repository"
 
+export type PredictionSource = "routine" | "history" | "fallback"
+
+export type PredictionResult = {
+  categoryId: number | null
+  defaultAmount: number
+  source: PredictionSource
+}
+
 /** Convert a Date to minutes from midnight (0–1439). */
 function toMinutes(date: Date): number {
   return date.getHours() * 60 + date.getMinutes()
@@ -16,19 +24,19 @@ function dayBit(date: Date): number {
 }
 
 /**
- * V1 prediction pipeline:
- * 1. Match current time against user-configured routine windows (primary).
+ * V2 prediction pipeline:
+ * 1. Match current time + day against user-configured routine windows (primary).
  * 2. Fall back to historical frequency for the same time-of-day window.
  * 3. Fall back to the first category found.
  *
- * Returns the predicted category id, or null when no categories exist at all.
+ * Returns { categoryId, defaultAmount, source }.
  */
 export async function predictCategory(
   categoryRepo: CategoryRepository,
   expenseRepo: ExpenseEventRepository,
   routineRepo?: RoutineRepository,
   nowMs?: number,
-): Promise<number | null> {
+): Promise<PredictionResult> {
   const now = new Date(nowMs ?? Date.now())
   const currentMinutes = toMinutes(now)
   const currentDayBit = dayBit(now)
@@ -43,7 +51,13 @@ export async function predictCategory(
         currentMinutes >= r.time_start &&
         currentMinutes < r.time_end,
     )
-    if (match?.category_id) return match.category_id
+    if (match?.category_id) {
+      return {
+        categoryId: match.category_id,
+        defaultAmount: match.default_amount ?? 0,
+        source: "routine",
+      }
+    }
   }
 
   // 2. Historical frequency fallback — find the most common category used within
@@ -54,7 +68,6 @@ export async function predictCategory(
     if (!e.created_at) return false
     const pastMinutes = toMinutes(new Date(e.created_at))
     const diff = Math.abs(pastMinutes - currentMinutes)
-    // Handle midnight wrap-around (e.g. 23:45 vs 00:15)
     return Math.min(diff, 1440 - diff) <= WINDOW_MINUTES
   })
 
@@ -67,17 +80,18 @@ export async function predictCategory(
     let bestId: number | null = null
     let bestCount = 0
     for (const [id, c] of counts.entries()) {
-      if (c > bestCount) {
-        bestCount = c
-        bestId = id
-      }
+      if (c > bestCount) { bestCount = c; bestId = id }
     }
-    if (bestId !== null) return bestId
+    if (bestId !== null) return { categoryId: bestId, defaultAmount: 0, source: "history" }
   }
 
   // 3. First category fallback
   const categories = await categoryRepo.findAll()
-  return categories.length ? (categories[0].id ?? null) : null
+  return {
+    categoryId: categories.length ? (categories[0].id ?? null) : null,
+    defaultAmount: 0,
+    source: "fallback",
+  }
 }
 
 export default predictCategory

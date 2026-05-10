@@ -74,11 +74,25 @@ function formatTimestamp(ts?: number): string {
 }
 
 // ---- Category Pill -------------------------------------------------------
-function CategoryPill({ color, label }: { color: string; label: string }) {
+function CategoryPill({
+  color, label, amount, source,
+}: {
+  color: string
+  label: string
+  amount: number
+  source: "routine" | "history" | "fallback"
+}) {
+  const suffix = source === "routine" && amount > 0
+    ? ` · KSh ${formatAmount(amount)}`
+    : source === "routine"
+    ? " · routine"
+    : source === "history"
+    ? " · past"
+    : ""
   return (
     <View style={[$pill, { borderColor: hairline }]}>
       <View style={[$pillDot, { backgroundColor: color }]} />
-      <Text style={$pillText}>{label} · routine</Text>
+      <Text style={$pillText}>{label}{suffix}</Text>
     </View>
   )
 }
@@ -125,6 +139,7 @@ export function TapToLogScreen() {
 
   const [total, setTotal] = useState(0)
   const [predictedCategory, setPredictedCategory] = useState<Category | null>(null)
+  const [prediction, setPrediction] = useState<{ amount: number; source: "routine" | "history" | "fallback" }>({ amount: 0, source: "fallback" })
   const [lastEvent, setLastEvent] = useState<ExpenseEvent | null>(null)
   const [lastCategory, setLastCategory] = useState<Category | null>(null)
 
@@ -134,16 +149,17 @@ export function TapToLogScreen() {
     const routineRepo = container.resolve<RoutineRepository>("routineRepository")
     if (!expenseRepo || !categoryRepo) return
 
-    const [allEvents, predictedId] = await Promise.all([
+    const [allEvents, result] = await Promise.all([
       expenseRepo.findAll(),
       predictCategory(categoryRepo, expenseRepo, routineRepo),
     ])
 
     const todayTotal = allEvents.reduce((sum, e) => sum + (e.amount ?? 0), 0)
     setTotal(todayTotal)
+    setPrediction({ amount: result.defaultAmount, source: result.source })
 
-    if (predictedId != null) {
-      const cat = await categoryRepo.findById(predictedId)
+    if (result.categoryId != null) {
+      const cat = await categoryRepo.findById(result.categoryId)
       setPredictedCategory(cat ?? null)
     }
 
@@ -178,8 +194,9 @@ export function TapToLogScreen() {
     const sync = container.resolve<any>("syncEngine")
     if (!expenseRepo || !categoryRepo) return
 
-    const predictedId = await predictCategory(categoryRepo, expenseRepo, routineRepo)
-    await createExpense(expenseRepo, 100, predictedId ?? null, sync)
+    const result = await predictCategory(categoryRepo, expenseRepo, routineRepo)
+    const amount = result.defaultAmount > 0 ? result.defaultAmount : 100
+    await createExpense(expenseRepo, amount, result.categoryId, sync)
     loadData()
   }
 
@@ -202,7 +219,7 @@ export function TapToLogScreen() {
 
       {/* Body */}
       <View style={$body}>
-        <CategoryPill color={pillColor} label={pillLabel} />
+        <CategoryPill color={pillColor} label={pillLabel} amount={prediction.amount} source={prediction.source} />
 
         <Pressable
           onPress={handleTap}

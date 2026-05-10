@@ -98,44 +98,26 @@ function createInMemoryDb() {
           return
         }
 
-        // Routines: INSERT (name, category_id, time_start, time_end, days_of_week, is_high_confidence)
-        if (
-          /^INSERT\s+INTO\s+routines\s*\(name\s*,\s*category_id\s*,\s*time_start\s*,\s*time_end\s*,\s*days_of_week\s*,\s*is_high_confidence\)/i.test(
-            s,
-          )
-        ) {
-          const [name, category_id, time_start, time_end, days_of_week, is_high_confidence] =
-            params
+        // Routines: INSERT (name, category_id, time_start, time_end, days_of_week, is_high_confidence, default_amount)
+        if (/^INSERT\s+INTO\s+routines\s*\(/i.test(s)) {
+          const [name, category_id, time_start, time_end, days_of_week, is_high_confidence, default_amount] = params
           const id = ++state.nextRoutineId
           state.routines.push({
-            id,
-            name,
-            category_id,
-            time_start,
-            time_end,
-            days_of_week,
-            is_high_confidence,
+            id, name, category_id, time_start, time_end,
+            days_of_week, is_high_confidence, default_amount: default_amount ?? 0,
           })
           success && success(tx, { insertId: id, rows: makeRows([]) })
           return
         }
 
         // Routines: SELECT ALL
-        if (
-          /^SELECT\s+id\s*,\s*name\s*,\s*category_id\s*,\s*time_start\s*,\s*time_end\s*,\s*days_of_week\s*,\s*is_high_confidence\s+FROM\s+routines;?$/i.test(
-            s,
-          )
-        ) {
+        if (/^SELECT\s+.*\s+FROM\s+routines;?$/i.test(s) && !/WHERE/i.test(s)) {
           success && success(tx, { rows: makeRows(state.routines) })
           return
         }
 
         // Routines: SELECT BY ID
-        if (
-          /^SELECT\s+id\s*,\s*name\s*,\s*category_id\s*,\s*time_start\s*,\s*time_end\s*,\s*days_of_week\s*,\s*is_high_confidence\s+FROM\s+routines\s+WHERE\s+id\s*=\s*\?\s+LIMIT\s+1;?$/i.test(
-            s,
-          )
-        ) {
+        if (/^SELECT\s+.*\s+FROM\s+routines\s+WHERE\s+id\s*=\s*\?\s+LIMIT\s+1;?$/i.test(s)) {
           const id = params[0]
           const rows = state.routines.filter((r: any) => r.id === id)
           success && success(tx, { rows: makeRows(rows) })
@@ -143,21 +125,10 @@ function createInMemoryDb() {
         }
 
         // Routines: UPDATE
-        if (
-          /^UPDATE\s+routines\s+SET\s+name\s*=\s*\?.*WHERE\s+id\s*=\s*\?/i.test(s)
-        ) {
-          const [name, category_id, time_start, time_end, days_of_week, is_high_confidence, id] =
-            params
+        if (/^UPDATE\s+routines\s+SET\s+name\s*=\s*\?.*WHERE\s+id\s*=\s*\?/i.test(s)) {
+          const [name, category_id, time_start, time_end, days_of_week, is_high_confidence, default_amount, id] = params
           const item = state.routines.find((r: any) => r.id === id)
-          if (item)
-            Object.assign(item, {
-              name,
-              category_id,
-              time_start,
-              time_end,
-              days_of_week,
-              is_high_confidence,
-            })
+          if (item) Object.assign(item, { name, category_id, time_start, time_end, days_of_week, is_high_confidence, default_amount: default_amount ?? 0 })
           success && success(tx, { rows: makeRows([]) })
           return
         }
@@ -347,7 +318,8 @@ export async function initDatabase() {
        time_start INTEGER NOT NULL DEFAULT 0,
        time_end INTEGER NOT NULL DEFAULT 1439,
        days_of_week INTEGER NOT NULL DEFAULT 127,
-       is_high_confidence INTEGER NOT NULL DEFAULT 0
+       is_high_confidence INTEGER NOT NULL DEFAULT 0,
+       default_amount INTEGER NOT NULL DEFAULT 0
      );`,
     `CREATE TABLE IF NOT EXISTS expense_events (
        id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -392,6 +364,7 @@ export async function initDatabase() {
     `ALTER TABLE routines ADD COLUMN time_end INTEGER NOT NULL DEFAULT 1439;`,
     `ALTER TABLE routines ADD COLUMN days_of_week INTEGER NOT NULL DEFAULT 127;`,
     `ALTER TABLE routines ADD COLUMN is_high_confidence INTEGER NOT NULL DEFAULT 0;`,
+    `ALTER TABLE routines ADD COLUMN default_amount INTEGER NOT NULL DEFAULT 0;`,
   ]
 
   for (const sql of alterStatements) {

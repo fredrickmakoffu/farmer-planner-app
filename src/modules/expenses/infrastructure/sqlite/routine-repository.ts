@@ -3,7 +3,7 @@ import { container } from "@/bootstrap/container"
 import type { Routine } from "../../domain/entities/routine"
 import type { RoutineRepository } from "../../domain/repositories/routine-repository"
 
-const COLUMNS = "id, name, category_id, time_start, time_end, days_of_week, is_high_confidence"
+const COLUMNS = "id, name, category_id, time_start, time_end, days_of_week, is_high_confidence, default_amount"
 
 function rowToRoutine(row: any): Routine {
   return {
@@ -14,6 +14,7 @@ function rowToRoutine(row: any): Routine {
     time_end: row.time_end,
     days_of_week: row.days_of_week,
     is_high_confidence: row.is_high_confidence === 1,
+    default_amount: row.default_amount ?? 0,
   }
 }
 
@@ -38,8 +39,8 @@ export class SqliteRoutineRepository implements RoutineRepository {
       this.db.transaction(
         (tx: any) => {
           tx.executeSql(
-            `INSERT INTO routines (name, category_id, time_start, time_end, days_of_week, is_high_confidence)
-             VALUES (?, ?, ?, ?, ?, ?);`,
+            `INSERT INTO routines (name, category_id, time_start, time_end, days_of_week, is_high_confidence, default_amount)
+             VALUES (?, ?, ?, ?, ?, ?, ?);`,
             [
               routine.name,
               routine.category_id,
@@ -47,6 +48,7 @@ export class SqliteRoutineRepository implements RoutineRepository {
               routine.time_end,
               routine.days_of_week,
               routine.is_high_confidence ? 1 : 0,
+              routine.default_amount ?? 0,
             ],
             (_: any, result: any) => {
               resolve({ ...routine, id: result.insertId })
@@ -98,7 +100,7 @@ export class SqliteRoutineRepository implements RoutineRepository {
           tx.executeSql(
             `UPDATE routines
              SET name = ?, category_id = ?, time_start = ?, time_end = ?,
-                 days_of_week = ?, is_high_confidence = ?
+                 days_of_week = ?, is_high_confidence = ?, default_amount = ?
              WHERE id = ?;`,
             [
               routine.name,
@@ -107,6 +109,7 @@ export class SqliteRoutineRepository implements RoutineRepository {
               routine.time_end,
               routine.days_of_week,
               routine.is_high_confidence ? 1 : 0,
+              routine.default_amount ?? 0,
               routine.id,
             ],
           )

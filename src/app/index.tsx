@@ -1,7 +1,8 @@
 import { Redirect } from "expo-router"
+import { loadString } from "@/utils/storage"
 
-// Route to the Tap tab (main screen of the app)
 export default function Index() {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const onboarded = loadString("onboarding.complete")
+  if (!onboarded) return <Redirect href={"/onboarding" as any} />
   return <Redirect href={"/(tabs)/" as any} />
 }

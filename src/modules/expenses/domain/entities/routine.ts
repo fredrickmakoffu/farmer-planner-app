@@ -13,6 +13,8 @@ export type Routine = {
   days_of_week: number
   /** When true the system may generate a Shadow Event if no tap is recorded. */
   is_high_confidence: boolean
+  /** Default expense amount in KSh for this routine window (0 = not set). */
+  default_amount: number
 }
 
 export default Routine
