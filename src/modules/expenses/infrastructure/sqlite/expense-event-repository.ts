@@ -73,6 +73,21 @@ export class SqliteExpenseEventRepository implements ExpenseEventRepository {
     })
   }
 
+  update(id: number, amount: number, categoryId: number | null): Promise<void> {
+    return new Promise((resolve, reject) => {
+      this.db.transaction(
+        (tx: any) => {
+          tx.executeSql(
+            `UPDATE expense_events SET amount = ?, category_id = ? WHERE id = ?;`,
+            [amount, categoryId, id],
+          )
+        },
+        (err: any) => reject(err),
+        () => resolve(),
+      )
+    })
+  }
+
   delete(id: number): Promise<void> {
     return new Promise((resolve, reject) => {
       this.db.transaction(

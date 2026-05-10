@@ -4,6 +4,7 @@ export interface ExpenseEventRepository {
   create(amount: number, categoryId?: number | null): Promise<ExpenseEvent>
   findAll(): Promise<ExpenseEvent[]>
   findById(id: number): Promise<ExpenseEvent | undefined>
+  update(id: number, amount: number, categoryId: number | null): Promise<void>
   delete(id: number): Promise<void>
 }
 

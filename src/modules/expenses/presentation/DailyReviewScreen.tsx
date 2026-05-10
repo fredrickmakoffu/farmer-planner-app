@@ -13,6 +13,7 @@ import { MaterialCommunityIcons, Ionicons } from "@expo/vector-icons"
 import { Text } from "@/components/Text"
 import { container } from "@/bootstrap/container"
 import { deleteExpense } from "@/modules/expenses/application/delete-expense"
+import { updateExpense } from "@/modules/expenses/application/update-expense"
 import type { Category } from "@/modules/expenses/domain/entities/category"
 import type { CategoryRepository } from "@/modules/expenses/domain/repositories/category-repository"
 import type { ExpenseEvent } from "@/modules/expenses/domain/entities/expense-event"
@@ -40,6 +41,7 @@ import {
   elevation,
 } from "@/theme/tapp-tokens"
 import { typography } from "@/theme/typography"
+import { EditExpenseSheet } from "./review/EditExpenseSheet"
 
 // ---- Helpers ---------------------------------------------------------------
 
@@ -97,32 +99,28 @@ type EventRowItem = {
   event: ExpenseEvent
   category: Category | null
   isFirst: boolean
-  onDelete: (id: number) => void
+  onPress: (event: ExpenseEvent) => void
 }
 
-function EventRow({ event, category, isFirst, onDelete }: EventRowItem) {
-  const [showDelete, setShowDelete] = useState(false)
-  const isShadow = false // shadow events are a V2 feature; rows are all confirmed for now
+function EventRow({ event, category, isFirst, onPress }: EventRowItem) {
+  const isShadow = false
   const color = resolveCategoryColor(category?.name, category?.color_hex)
 
   return (
     <Pressable
-      onPress={() => setShowDelete((v) => !v)}
-      style={[
+      onPress={() => onPress(event)}
+      style={({ pressed }) => [
         $row,
         !isFirst && $rowBorder,
         isShadow && $shadowRow,
+        pressed && $rowPressed,
       ]}
     >
       <CategoryDisc color={color} isShadow={isShadow} />
 
       <View style={$rowMid}>
-        <Text style={[
-          $rowName,
-          isShadow && $rowNameShadow,
-        ]}>
+        <Text style={[$rowName, isShadow && $rowNameShadow]}>
           {category?.name ?? "Expense"}
-          {isShadow ? " — shadow" : ""}
         </Text>
         <Text style={$rowMeta}>
           {event.category_id != null ? "predicted" : "unassigned"}
@@ -132,20 +130,8 @@ function EventRow({ event, category, isFirst, onDelete }: EventRowItem) {
       </View>
 
       <View style={$rowRight}>
-        {showDelete ? (
-          <Pressable
-            onPress={() => event.id != null && onDelete(event.id)}
-            style={$deleteBtn}
-            hitSlop={8}
-          >
-            <Ionicons name="trash-outline" size={16} color={coral500} />
-          </Pressable>
-        ) : (
-          <>
-            <Text style={$rowAmount}>{"KSh " + formatAmount(event.amount)}</Text>
-            {isShadow && <Text style={$shadowHint}>swipe →</Text>}
-          </>
-        )}
+        <Text style={$rowAmount}>{"KSh " + formatAmount(event.amount)}</Text>
+        <Ionicons name="chevron-forward" size={14} color={ink4} />
       </View>
     </Pressable>
   )
@@ -170,8 +156,10 @@ export function DailyReviewScreen() {
   const today = new Date()
 
   const [events, setEvents] = useState<ExpenseEvent[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
   const [categoryMap, setCategoryMap] = useState<Map<number, Category>>(new Map())
   const [loading, setLoading] = useState(true)
+  const [editingEvent, setEditingEvent] = useState<ExpenseEvent | null>(null)
 
   const loadData = useCallback(async () => {
     const expenseRepo = container.resolve<ExpenseEventRepository>("expenseEventRepository")
@@ -189,11 +177,20 @@ export function DailyReviewScreen() {
     }
 
     setEvents(allEvents)
+    setCategories(allCategories)
     setCategoryMap(map)
     setLoading(false)
   }, [])
 
   useEffect(() => { loadData() }, [loadData])
+
+  const handleSave = useCallback(async (id: number, amount: number, categoryId: number | null) => {
+    const expenseRepo = container.resolve<ExpenseEventRepository>("expenseEventRepository")
+    const sync = container.resolve<any>("syncEngine")
+    if (!expenseRepo) return
+    await updateExpense(expenseRepo, id, amount, categoryId, sync)
+    loadData()
+  }, [loadData])
 
   const handleDelete = useCallback(async (id: number) => {
     const expenseRepo = container.resolve<ExpenseEventRepository>("expenseEventRepository")
@@ -242,7 +239,7 @@ export function DailyReviewScreen() {
                     event={ev}
                     category={ev.category_id != null ? (categoryMap.get(ev.category_id as number) ?? null) : null}
                     isFirst={i === 0}
-                    onDelete={handleDelete}
+                    onPress={setEditingEvent}
                   />
                 ))}
               </View>
@@ -261,6 +258,15 @@ export function DailyReviewScreen() {
           )}
         </ScrollView>
       )}
+
+      <EditExpenseSheet
+        visible={editingEvent !== null}
+        event={editingEvent}
+        categories={categories}
+        onClose={() => setEditingEvent(null)}
+        onSave={handleSave}
+        onDelete={handleDelete}
+      />
     </View>
   )
 }
@@ -269,10 +275,7 @@ export default DailyReviewScreen
 
 // ---- Styles ----------------------------------------------------------------
 
-const $screen: ViewStyle = {
-  flex: 1,
-  backgroundColor: paper,
-}
+const $screen: ViewStyle = { flex: 1, backgroundColor: paper }
 
 const $header: ViewStyle = {
   paddingHorizontal: spacing.s5,
@@ -281,25 +284,18 @@ const $header: ViewStyle = {
 }
 
 const $eyebrow: TextStyle = {
-  fontSize: 11,
-  letterSpacing: 1.4,
-  textTransform: "uppercase",
-  color: ink3,
-  fontFamily: typography.primary.normal,
+  fontSize: 11, letterSpacing: 1.4, textTransform: "uppercase",
+  color: ink3, fontFamily: typography.primary.normal,
 }
 
 const $dayName: TextStyle = {
-  fontSize: 38,
-  lineHeight: 42,
-  letterSpacing: -0.5,
-  color: ink,
-  fontFamily: typography.primary.bold,
+  fontSize: 38, lineHeight: 42, letterSpacing: -0.5,
+  color: ink, fontFamily: typography.primary.bold,
   marginTop: 4,
 }
 
 const $subHeader: TextStyle = {
-  fontSize: 13,
-  color: ink3,
+  fontSize: 13, color: ink3,
   fontFamily: typography.primary.normal,
   marginTop: 3,
 }
@@ -311,9 +307,7 @@ const $scrollContent = {
 }
 
 const $loadingWrap: ViewStyle = {
-  flex: 1,
-  alignItems: "center",
-  justifyContent: "center",
+  flex: 1, alignItems: "center", justifyContent: "center",
 }
 
 // ---- Card + rows -----------------------------------------------------------
@@ -341,62 +335,37 @@ const $rowBorder: ViewStyle = {
   borderTopColor: hairline,
 }
 
-const $shadowRow: ViewStyle = {
-  backgroundColor: paper2,
-}
+const $rowPressed: ViewStyle = { backgroundColor: paper2 }
+const $shadowRow: ViewStyle = { backgroundColor: paper2 }
 
 const $disc: ViewStyle = {
-  width: 28,
-  height: 28,
-  borderRadius: 14,
-  alignItems: "center",
-  justifyContent: "center",
+  width: 28, height: 28, borderRadius: 14,
+  alignItems: "center", justifyContent: "center",
   flexShrink: 0,
 }
 
-const $rowMid: ViewStyle = {
-  flex: 1,
-}
+const $rowMid: ViewStyle = { flex: 1 }
 
 const $rowName: TextStyle = {
-  fontSize: 15,
-  color: ink,
+  fontSize: 15, color: ink,
   fontFamily: typography.primary.normal,
 }
 
-const $rowNameShadow: TextStyle = {
-  fontStyle: "italic",
-  color: ink2,
-}
+const $rowNameShadow: TextStyle = { fontStyle: "italic", color: ink2 }
 
 const $rowMeta: TextStyle = {
-  fontSize: 12,
-  color: ink3,
+  fontSize: 12, color: ink3,
   fontFamily: typography.primary.normal,
   marginTop: 2,
 }
 
 const $rowRight: ViewStyle = {
-  alignItems: "flex-end",
-  gap: 2,
+  flexDirection: "row", alignItems: "center", gap: spacing.s1,
 }
 
 const $rowAmount: TextStyle = {
-  fontSize: 14,
-  color: ink,
+  fontSize: 14, color: ink,
   fontFamily: typography.mono.normal,
-}
-
-const $shadowHint: TextStyle = {
-  fontSize: 11,
-  color: ink3,
-  fontFamily: typography.primary.normal,
-}
-
-const $deleteBtn: ViewStyle = {
-  padding: spacing.s2,
-  borderRadius: radii.sm,
-  backgroundColor: "#FBF3EF",
 }
 
 // ---- Total row -------------------------------------------------------------
@@ -410,14 +379,12 @@ const $totalRow: ViewStyle = {
 }
 
 const $totalLabel: TextStyle = {
-  fontSize: 13,
-  color: ink3,
+  fontSize: 13, color: ink3,
   fontFamily: typography.primary.normal,
 }
 
 const $totalAmount: TextStyle = {
-  fontSize: 16,
-  color: ink,
+  fontSize: 16, color: ink,
   fontFamily: typography.mono.normal,
   letterSpacing: -0.3,
 }
@@ -440,8 +407,7 @@ const $confirmBtnPressed: ViewStyle = {
 }
 
 const $confirmBtnText: TextStyle = {
-  fontSize: 15,
-  color: "white",
+  fontSize: 15, color: "white",
   fontFamily: typography.primary.medium,
   letterSpacing: 0.1,
 }
@@ -449,22 +415,18 @@ const $confirmBtnText: TextStyle = {
 // ---- Empty state -----------------------------------------------------------
 
 const $emptyWrap: ViewStyle = {
-  alignItems: "center",
-  justifyContent: "center",
-  paddingVertical: spacing.s16,
-  gap: spacing.s3,
+  alignItems: "center", justifyContent: "center",
+  paddingVertical: spacing.s16, gap: spacing.s3,
 }
 
 const $emptyTitle: TextStyle = {
-  fontSize: 17,
-  color: ink3,
+  fontSize: 17, color: ink3,
   fontFamily: typography.primary.semiBold,
   marginTop: spacing.s2,
 }
 
 const $emptySub: TextStyle = {
-  fontSize: 13,
-  color: ink4,
+  fontSize: 13, color: ink4,
   fontFamily: typography.primary.normal,
   textAlign: "center",
   paddingHorizontal: spacing.s8,
