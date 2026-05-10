@@ -18,6 +18,7 @@ import { useRouter } from "expo-router"
 
 import { Text } from "@/components/Text"
 import { container } from "@/bootstrap/container"
+import { createCategory } from "@/modules/expenses/application/create-category"
 import type { Routine } from "@/modules/expenses/domain/entities/routine"
 import type { RoutineRepository } from "@/modules/expenses/domain/repositories/routine-repository"
 import type { Category } from "@/modules/expenses/domain/entities/category"
@@ -29,25 +30,14 @@ import {
   spacing, radii, elevation, duration,
 } from "@/theme/tapp-tokens"
 import { typography } from "@/theme/typography"
+import { CategoryDisc, ICON_OPTIONS } from "./CategoriesScreen"
 
 // ---- helpers ---------------------------------------------------------------
 
-const CATEGORY_COLOR_MAP: Record<string, string> = {
-  food: catClay, lunch: catClay, dinner: catClay,
-  groceries: catMango,
-  transport: catFern, matatu: catFern, uber: catFern,
-  utilities: catLake, airtime: catLake,
-  leisure: catOrchid, coffee: catOrchid,
-  misc: catStone,
-}
-
-function resolveCategoryColor(name?: string, hex?: string): string {
-  if (name) {
-    const mapped = CATEGORY_COLOR_MAP[name.toLowerCase()]
-    if (mapped) return mapped
-  }
-  return hex ?? catStone
-}
+const PALETTE = [
+  { color: catClay }, { color: catMango }, { color: catFern },
+  { color: catLake }, { color: catOrchid }, { color: catStone },
+]
 
 function minutesToLabel(m: number): string {
   const h = Math.floor(m / 60)
@@ -95,9 +85,10 @@ type EditSheetProps = {
   onSave: (data: Omit<Routine, "id">, id?: number) => void
   onDelete: (id: number) => void
   onClose: () => void
+  onCategoriesChanged: () => void
 }
 
-function EditRoutineSheet({ visible, mode, routine, categories, onSave, onDelete, onClose }: EditSheetProps) {
+function EditRoutineSheet({ visible, mode, routine, categories, onSave, onDelete, onClose, onCategoriesChanged }: EditSheetProps) {
   const slideAnim = useRef(new Animated.Value(600)).current
 
   const [label, setLabel] = useState("")
@@ -105,6 +96,13 @@ function EditRoutineSheet({ visible, mode, routine, categories, onSave, onDelete
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null)
   const [selectedSlot, setSelectedSlot] = useState(0)
   const [days, setDays] = useState<127 | 62 | 65>(127)
+
+  // Inline new-category form
+  const [newCatOpen, setNewCatOpen] = useState(false)
+  const [newCatName, setNewCatName] = useState("")
+  const [newCatColor, setNewCatColor] = useState(catClay)
+  const [newCatIcon, setNewCatIcon] = useState("silverware-fork-knife")
+  const [newCatSaving, setNewCatSaving] = useState(false)
 
   useEffect(() => {
     if (visible) {
@@ -150,6 +148,22 @@ function EditRoutineSheet({ visible, mode, routine, categories, onSave, onDelete
 
   const canSave = label.trim().length > 0 && parseFloat(amount) > 0 && selectedCategoryId != null
 
+  async function handleNewCatSave() {
+    if (!newCatName.trim()) return
+    setNewCatSaving(true)
+    try {
+      const repo = container.resolve<CategoryRepository>("categoryRepository")
+      if (!repo) return
+      const created = await createCategory(repo, newCatName.trim(), newCatColor, newCatIcon, false)
+      setSelectedCategoryId(created.id ?? null)
+      setNewCatOpen(false)
+      setNewCatName("")
+      onCategoriesChanged()
+    } finally {
+      setNewCatSaving(false)
+    }
+  }
+
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
       <Pressable style={$scrim} onPress={onClose} />
@@ -194,7 +208,12 @@ function EditRoutineSheet({ visible, mode, routine, categories, onSave, onDelete
             </View>
 
             {/* Category */}
-            <Text style={$fieldLabel}>Category</Text>
+            <View style={$catLabelRow}>
+              <Text style={$fieldLabel}>Category</Text>
+              <Pressable onPress={() => { setNewCatOpen((v) => !v); setNewCatName("") }} hitSlop={8}>
+                <Text style={$newCatLink}>{newCatOpen ? "Cancel" : "+ New category"}</Text>
+              </Pressable>
+            </View>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -202,20 +221,61 @@ function EditRoutineSheet({ visible, mode, routine, categories, onSave, onDelete
               contentContainerStyle={$pillScrollContent}
             >
               {categories.map((cat) => {
-                const color = resolveCategoryColor(cat.name, cat.color_hex)
                 const active = cat.id === selectedCategoryId
                 return (
                   <Pressable
                     key={String(cat.id)}
                     onPress={() => setSelectedCategoryId(cat.id ?? null)}
-                    style={[$catPill, active && { backgroundColor: color, borderColor: color }]}
+                    style={[$catPill, active && { backgroundColor: cat.color_hex, borderColor: cat.color_hex }]}
                   >
-                    <View style={[$catDot, { backgroundColor: color }]} />
+                    <CategoryDisc color={cat.color_hex} icon={cat.icon ?? "dots-horizontal"} size={20} />
                     <Text style={[$catPillText, active && $catPillTextActive]}>{cat.name}</Text>
                   </Pressable>
                 )
               })}
             </ScrollView>
+
+            {/* Inline new-category form */}
+            {newCatOpen && (
+              <View style={$newCatForm}>
+                <TextInput
+                  style={$textInput}
+                  value={newCatName}
+                  onChangeText={setNewCatName}
+                  placeholder="Category name"
+                  placeholderTextColor={ink4}
+                  autoFocus
+                />
+                <View style={$newCatColorRow}>
+                  {PALETTE.map((p) => (
+                    <Pressable
+                      key={p.color}
+                      onPress={() => setNewCatColor(p.color)}
+                      style={[$miniSwatch, { backgroundColor: p.color }, newCatColor === p.color && $miniSwatchActive]}
+                      hitSlop={6}
+                    />
+                  ))}
+                </View>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={$iconScrollContent}>
+                  {ICON_OPTIONS.map((ic) => (
+                    <Pressable
+                      key={ic}
+                      onPress={() => setNewCatIcon(ic)}
+                      style={[$iconCell, newCatIcon === ic && $iconCellActive]}
+                    >
+                      <MaterialCommunityIcons name={ic as any} size={18} color={newCatIcon === ic ? "white" : ink3} />
+                    </Pressable>
+                  ))}
+                </ScrollView>
+                <Pressable
+                  onPress={handleNewCatSave}
+                  disabled={newCatSaving || !newCatName.trim()}
+                  style={({ pressed }) => [$confirmSmall, (!newCatName.trim() || newCatSaving) && { opacity: 0.45 }, pressed && { opacity: 0.75 }]}
+                >
+                  <Text style={$confirmSmallText}>Add &amp; select</Text>
+                </Pressable>
+              </View>
+            )}
 
             {/* Time slot */}
             <Text style={$fieldLabel}>When</Text>
@@ -290,7 +350,7 @@ type RoutineRowProps = {
 }
 
 function RoutineRow({ routine, category, isFirst, onPress }: RoutineRowProps) {
-  const color = resolveCategoryColor(category?.name, category?.color_hex)
+  const color = category?.color_hex ?? catStone
   return (
     <Pressable
       onPress={() => onPress(routine)}
@@ -462,6 +522,7 @@ export function RoutinesScreen() {
         onSave={handleSave}
         onDelete={handleDelete}
         onClose={() => setSheetOpen(false)}
+        onCategoriesChanged={loadData}
       />
     </View>
   )
@@ -789,4 +850,63 @@ const $deleteBtn: ViewStyle = {
 const $deleteBtnText: TextStyle = {
   fontSize: 14, color: coral500,
   fontFamily: typography.primary.normal,
+}
+
+// ---- Inline new-category form ----------------------------------------------
+
+const $catLabelRow: ViewStyle = {
+  flexDirection: "row", justifyContent: "space-between", alignItems: "center",
+}
+
+const $newCatLink: TextStyle = {
+  fontSize: 12, color: coral500,
+  fontFamily: typography.primary.medium,
+}
+
+const $newCatForm: ViewStyle = {
+  backgroundColor: paper2,
+  borderRadius: radii.md,
+  borderWidth: 1, borderColor: hairline,
+  padding: spacing.s3,
+  gap: spacing.s3,
+}
+
+const $newCatColorRow: ViewStyle = {
+  flexDirection: "row", gap: spacing.s2,
+}
+
+const $miniSwatch: ViewStyle = {
+  width: 28, height: 28, borderRadius: 14,
+}
+
+const $miniSwatchActive: ViewStyle = {
+  borderWidth: 2.5, borderColor: ink,
+}
+
+const $iconScrollContent = {
+  gap: spacing.s2,
+  paddingVertical: spacing.s1,
+}
+
+const $iconCell: ViewStyle = {
+  width: 36, height: 36, borderRadius: radii.md,
+  alignItems: "center", justifyContent: "center",
+  backgroundColor: card,
+  borderWidth: 1, borderColor: hairline,
+}
+
+const $iconCellActive: ViewStyle = { backgroundColor: ink, borderColor: ink }
+
+const $confirmSmall: ViewStyle = {
+  backgroundColor: coral500,
+  borderRadius: radii.pill,
+  paddingHorizontal: spacing.s4,
+  paddingVertical: spacing.s2,
+  alignItems: "center",
+  alignSelf: "flex-end",
+}
+
+const $confirmSmallText: TextStyle = {
+  fontSize: 13, color: "white",
+  fontFamily: typography.primary.medium,
 }

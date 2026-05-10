@@ -3,13 +3,15 @@ import { container } from "@/bootstrap/container"
 import type { Category } from "../../domain/entities/category"
 import type { CategoryRepository } from "../../domain/repositories/category-repository"
 
-const COLUMNS = "id, name, color_hex, default_amount"
+const COLUMNS = "id, name, color_hex, default_amount, icon, is_system"
 
 function rowToCategory(row: any): Category {
   return {
     id: row.id,
     name: row.name,
     color_hex: row.color_hex ?? "#CCCCCC",
+    icon: row.icon ?? "dots-horizontal",
+    is_system: row.is_system === 1 || row.is_system === true,
     default_amount: row.default_amount ?? null,
   }
 }
@@ -35,8 +37,14 @@ export class SqliteCategoryRepository implements CategoryRepository {
       this.db.transaction(
         (tx: any) => {
           tx.executeSql(
-            `INSERT INTO categories (name, color_hex, default_amount) VALUES (?, ?, ?);`,
-            [category.name, category.color_hex, category.default_amount ?? null],
+            `INSERT INTO categories (name, color_hex, default_amount, icon, is_system) VALUES (?, ?, ?, ?, ?);`,
+            [
+              category.name,
+              category.color_hex,
+              category.default_amount ?? null,
+              category.icon ?? "dots-horizontal",
+              category.is_system ? 1 : 0,
+            ],
             (_: any, result: any) => {
               resolve({ ...category, id: result.insertId })
             },
@@ -85,8 +93,15 @@ export class SqliteCategoryRepository implements CategoryRepository {
       this.db.transaction(
         (tx: any) => {
           tx.executeSql(
-            `UPDATE categories SET name = ?, color_hex = ?, default_amount = ? WHERE id = ?;`,
-            [category.name, category.color_hex, category.default_amount ?? null, category.id],
+            `UPDATE categories SET name = ?, color_hex = ?, default_amount = ?, icon = ?, is_system = ? WHERE id = ?;`,
+            [
+              category.name,
+              category.color_hex,
+              category.default_amount ?? null,
+              category.icon ?? "dots-horizontal",
+              category.is_system ? 1 : 0,
+              category.id,
+            ],
           )
         },
         (err: any) => reject(err),

@@ -43,24 +43,20 @@ function createInMemoryDb() {
           return
         }
 
-        // Categories: INSERT (name, color_hex, default_amount)
+        // Categories: INSERT (name, color_hex, default_amount, icon, is_system)
         if (
-          /^INSERT\s+INTO\s+categories\s*\(name\s*,\s*color_hex\s*,\s*default_amount\)\s*VALUES\s*\(\?\s*,\s*\?\s*,\s*\?\)/i.test(
-            s,
-          )
+          /^INSERT\s+INTO\s+categories\s*\(name\s*,\s*color_hex\s*,\s*default_amount\s*,\s*icon\s*,\s*is_system\)\s*VALUES\s*\(\?\s*,\s*\?\s*,\s*\?\s*,\s*\?\s*,\s*\?\)/i.test(s)
         ) {
-          const [name, color_hex, default_amount] = params
+          const [name, color_hex, default_amount, icon, is_system] = params
           const id = ++state.nextCategoryId
-          state.categories.push({ id, name, color_hex, default_amount: default_amount ?? null })
+          state.categories.push({ id, name, color_hex, default_amount: default_amount ?? null, icon: icon ?? "dots-horizontal", is_system: is_system ?? 0 })
           success && success(tx, { insertId: id, rows: makeRows([]) })
           return
         }
 
         // Categories: SELECT ALL
         if (
-          /^SELECT\s+id\s*,\s*name\s*,\s*color_hex\s*,\s*default_amount\s+FROM\s+categories;?$/i.test(
-            s,
-          )
+          /^SELECT\s+id\s*,\s*name\s*,\s*color_hex\s*,\s*default_amount\s*,\s*icon\s*,\s*is_system\s+FROM\s+categories;?$/i.test(s)
         ) {
           success && success(tx, { rows: makeRows(state.categories) })
           return
@@ -68,9 +64,7 @@ function createInMemoryDb() {
 
         // Categories: SELECT BY ID
         if (
-          /^SELECT\s+id\s*,\s*name\s*,\s*color_hex\s*,\s*default_amount\s+FROM\s+categories\s+WHERE\s+id\s*=\s*\?\s+LIMIT\s+1;?$/i.test(
-            s,
-          )
+          /^SELECT\s+id\s*,\s*name\s*,\s*color_hex\s*,\s*default_amount\s*,\s*icon\s*,\s*is_system\s+FROM\s+categories\s+WHERE\s+id\s*=\s*\?\s+LIMIT\s+1;?$/i.test(s)
         ) {
           const id = params[0]
           const rows = state.categories.filter((c: any) => c.id === id)
@@ -80,13 +74,11 @@ function createInMemoryDb() {
 
         // Categories: UPDATE
         if (
-          /^UPDATE\s+categories\s+SET\s+name\s*=\s*\?\s*,\s*color_hex\s*=\s*\?\s*,\s*default_amount\s*=\s*\?\s+WHERE\s+id\s*=\s*\?/i.test(
-            s,
-          )
+          /^UPDATE\s+categories\s+SET\s+name\s*=\s*\?\s*,\s*color_hex\s*=\s*\?\s*,\s*default_amount\s*=\s*\?\s*,\s*icon\s*=\s*\?\s*,\s*is_system\s*=\s*\?\s+WHERE\s+id\s*=\s*\?/i.test(s)
         ) {
-          const [name, color_hex, default_amount, id] = params
+          const [name, color_hex, default_amount, icon, is_system, id] = params
           const item = state.categories.find((c: any) => c.id === id)
-          if (item) Object.assign(item, { name, color_hex, default_amount })
+          if (item) Object.assign(item, { name, color_hex, default_amount, icon, is_system })
           success && success(tx, { rows: makeRows([]) })
           return
         }
@@ -309,7 +301,9 @@ export async function initDatabase() {
        id INTEGER PRIMARY KEY AUTOINCREMENT,
        name TEXT NOT NULL,
        color_hex TEXT NOT NULL DEFAULT '#CCCCCC',
-       default_amount INTEGER
+       default_amount INTEGER,
+       icon TEXT NOT NULL DEFAULT 'dots-horizontal',
+       is_system INTEGER NOT NULL DEFAULT 0
      );`,
     `CREATE TABLE IF NOT EXISTS routines (
        id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -359,6 +353,8 @@ export async function initDatabase() {
   const alterStatements = [
     `ALTER TABLE categories ADD COLUMN color_hex TEXT NOT NULL DEFAULT '#CCCCCC';`,
     `ALTER TABLE categories ADD COLUMN default_amount INTEGER;`,
+    `ALTER TABLE categories ADD COLUMN icon TEXT NOT NULL DEFAULT 'dots-horizontal';`,
+    `ALTER TABLE categories ADD COLUMN is_system INTEGER NOT NULL DEFAULT 0;`,
     `ALTER TABLE routines ADD COLUMN category_id INTEGER NOT NULL DEFAULT 0;`,
     `ALTER TABLE routines ADD COLUMN time_start INTEGER NOT NULL DEFAULT 0;`,
     `ALTER TABLE routines ADD COLUMN time_end INTEGER NOT NULL DEFAULT 1439;`,

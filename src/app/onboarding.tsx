@@ -35,12 +35,12 @@ import { typography } from "@/theme/typography"
 // ---- Constants -------------------------------------------------------------
 
 const SEED_CATEGORIES = [
-  { name: "Food",      colorHex: catClay },
-  { name: "Transport", colorHex: catFern },
-  { name: "Groceries", colorHex: catMango },
-  { name: "Utilities", colorHex: catLake },
-  { name: "Leisure",   colorHex: catOrchid },
-  { name: "Misc",      colorHex: catStone },
+  { name: "Food",      colorHex: catClay,   icon: "silverware-fork-knife" },
+  { name: "Transport", colorHex: catFern,   icon: "bus" },
+  { name: "Groceries", colorHex: catMango,  icon: "cart" },
+  { name: "Utilities", colorHex: catLake,   icon: "lightning-bolt" },
+  { name: "Leisure",   colorHex: catOrchid, icon: "movie-open" },
+  { name: "Misc",      colorHex: catStone,  icon: "dots-horizontal" },
 ]
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -295,7 +295,7 @@ export default function OnboardingScreen() {
     let all = await categoryRepo.findAll()
     if (all.length === 0) {
       for (const seed of SEED_CATEGORIES) {
-        await createCategory(categoryRepo, seed.name, seed.colorHex)
+        await createCategory(categoryRepo, seed.name, seed.colorHex, seed.icon, true)
       }
       all = await categoryRepo.findAll()
     }

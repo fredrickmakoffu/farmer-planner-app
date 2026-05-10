@@ -10,9 +10,11 @@ import {
   View,
   ViewStyle,
   TextStyle,
+  ActivityIndicator,
 } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons"
+import { useRouter } from "expo-router"
 
 import { Text } from "@/components/Text"
 import { container } from "@/bootstrap/container"
@@ -20,30 +22,35 @@ import { createCategory } from "@/modules/expenses/application/create-category"
 import type { Category } from "@/modules/expenses/domain/entities/category"
 import type { CategoryRepository } from "@/modules/expenses/domain/repositories/category-repository"
 import {
-  paper,
-  paper2,
-  ink,
-  ink2,
-  ink3,
-  ink4,
-  coral500,
-  coral600,
-  card,
-  hairline,
-  catClay,
-  catMango,
-  catFern,
-  catLake,
-  catOrchid,
-  catStone,
-  spacing,
-  radii,
-  elevation,
-  duration,
+  paper, paper2, card, ink, ink2, ink3, ink4,
+  coral500, coral600, hairline,
+  catClay, catMango, catFern, catLake, catOrchid, catStone,
+  spacing, radii, elevation, duration,
 } from "@/theme/tapp-tokens"
 import { typography } from "@/theme/typography"
 
-// ---- Color palette ---------------------------------------------------------
+// ---- Constants -------------------------------------------------------------
+
+export const ICON_OPTIONS = [
+  "silverware-fork-knife",
+  "cart",
+  "bus",
+  "lightning-bolt",
+  "movie-open",
+  "coffee",
+  "medical-bag",
+  "shopping",
+  "home",
+  "airplane",
+  "dumbbell",
+  "cellphone",
+  "school",
+  "book-open-variant",
+  "heart",
+  "dots-horizontal",
+] as const
+
+export type CategoryIconName = (typeof ICON_OPTIONS)[number]
 
 const PALETTE = [
   { key: "clay",   color: catClay,   label: "Clay" },
@@ -52,51 +59,39 @@ const PALETTE = [
   { key: "lake",   color: catLake,   label: "Lake" },
   { key: "orchid", color: catOrchid, label: "Orchid" },
   { key: "stone",  color: catStone,  label: "Stone" },
-] as const
+]
 
-// ---- Category Disc ---------------------------------------------------------
+// ---- Category disc ---------------------------------------------------------
 
-function CategoryDisc({ color, size = 36 }: { color: string; size?: number }) {
+export function CategoryDisc({
+  color, icon, size = 36,
+}: { color: string; icon: string; size?: number }) {
   return (
-    <View
-      style={{
-        width: size,
-        height: size,
-        borderRadius: size / 2,
-        backgroundColor: color,
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-    >
-      <MaterialCommunityIcons name="silverware-fork-knife" size={size * 0.44} color="white" />
+    <View style={[$disc, { width: size, height: size, borderRadius: size / 2, backgroundColor: color }]}>
+      <MaterialCommunityIcons
+        name={icon as any}
+        size={Math.round(size * 0.44)}
+        color="white"
+      />
     </View>
   )
 }
 
-// ---- Color picker ----------------------------------------------------------
+// ---- Icon picker -----------------------------------------------------------
 
-function ColorPicker({
-  selected,
-  onSelect,
-}: {
-  selected: string
-  onSelect: (color: string) => void
-}) {
+function IconPicker({ selected, onSelect }: { selected: string; onSelect: (icon: string) => void }) {
   return (
-    <View style={$colorRow}>
-      {PALETTE.map((p) => {
-        const isSelected = selected === p.color
+    <View style={$iconGrid}>
+      {ICON_OPTIONS.map((icon) => {
+        const active = selected === icon
         return (
           <Pressable
-            key={p.key}
-            onPress={() => onSelect(p.color)}
-            style={[$colorSwatch, { backgroundColor: p.color }, isSelected && $colorSwatchSelected]}
-            accessibilityLabel={p.label}
-            hitSlop={6}
+            key={icon}
+            onPress={() => onSelect(icon)}
+            style={[$iconCell, active && $iconCellActive]}
+            hitSlop={4}
           >
-            {isSelected && (
-              <Ionicons name="checkmark" size={16} color="white" />
-            )}
+            <MaterialCommunityIcons name={icon as any} size={20} color={active ? "white" : ink3} />
           </Pressable>
         )
       })}
@@ -104,117 +99,137 @@ function ColorPicker({
   )
 }
 
-// ---- Add-Category sheet ----------------------------------------------------
+// ---- Color picker ----------------------------------------------------------
 
-function AddCategorySheet({
-  visible,
-  onClose,
-  onSaved,
-}: {
+function ColorPicker({ selected, onSelect }: { selected: string; onSelect: (c: string) => void }) {
+  return (
+    <View style={$colorRow}>
+      {PALETTE.map((p) => (
+        <Pressable
+          key={p.key}
+          onPress={() => onSelect(p.color)}
+          style={[$swatch, { backgroundColor: p.color }, selected === p.color && $swatchActive]}
+          accessibilityLabel={p.label}
+          hitSlop={6}
+        >
+          {selected === p.color && <Ionicons name="checkmark" size={16} color="white" />}
+        </Pressable>
+      ))}
+    </View>
+  )
+}
+
+// ---- Edit / Add sheet ------------------------------------------------------
+
+type SheetMode = "add" | "edit"
+
+type SheetProps = {
   visible: boolean
+  mode: SheetMode
+  category: Category | null
+  onSave: (data: Omit<Category, "id">, id?: number) => void
+  onDelete: (id: number) => void
   onClose: () => void
-  onSaved: (cat: Category) => void
-}) {
-  const insets = useSafeAreaInsets()
-  const slideAnim = useRef(new Animated.Value(300)).current
+}
+
+function CategorySheet({ visible, mode, category, onSave, onDelete, onClose }: SheetProps) {
+  const slideAnim = useRef(new Animated.Value(600)).current
 
   const [name, setName] = useState("")
-  const [selectedColor, setSelectedColor] = useState(catClay)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState("")
+  const [color, setColor] = useState(catClay)
+  const [icon, setIcon] = useState<string>("dots-horizontal")
+
+  const isSystem = category?.is_system ?? false
 
   useEffect(() => {
     if (visible) {
-      setName("")
-      setSelectedColor(catClay)
-      setError("")
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: duration.base,
-        useNativeDriver: true,
-      }).start()
+      if (category) {
+        setName(category.name)
+        setColor(category.color_hex)
+        setIcon(category.icon ?? "dots-horizontal")
+      } else {
+        setName("")
+        setColor(catClay)
+        setIcon("silverware-fork-knife")
+      }
+      Animated.timing(slideAnim, { toValue: 0, duration: duration.base, useNativeDriver: true }).start()
     } else {
-      Animated.timing(slideAnim, {
-        toValue: 300,
-        duration: duration.fast,
-        useNativeDriver: true,
-      }).start()
+      Animated.timing(slideAnim, { toValue: 600, duration: duration.fast, useNativeDriver: true }).start()
     }
-  }, [visible, slideAnim])
+  }, [visible, category])
 
-  async function handleSave() {
-    if (!name.trim()) { setError("Name is required."); return }
-    setSaving(true)
-    setError("")
-    try {
-      const repo = container.resolve<CategoryRepository>("categoryRepository")
-      if (!repo) throw new Error("Repository unavailable")
-      const cat = await createCategory(repo, name.trim(), selectedColor)
-      onSaved(cat)
-      onClose()
-    } catch (e: any) {
-      setError(e?.message ?? "Couldn't save.")
-    } finally {
-      setSaving(false)
-    }
+  function handleSave() {
+    if (!name.trim()) return
+    onSave({ name: name.trim(), color_hex: color, icon, is_system: isSystem }, category?.id)
   }
+
+  const canSave = name.trim().length > 0
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
-      {/* Scrim */}
       <Pressable style={$scrim} onPress={onClose} />
-
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        style={$sheetOuter}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={$kavWrap}
         pointerEvents="box-none"
       >
-        <Animated.View
-          style={[
-            $sheet,
-            { paddingBottom: insets.bottom + spacing.s6, transform: [{ translateY: slideAnim }] },
-          ]}
-        >
-          {/* Handle */}
+        <Animated.View style={[$sheet, { transform: [{ translateY: slideAnim }] }]}>
           <View style={$handle} />
 
-          <Text style={$sheetEyebrow}>Add category</Text>
-          <Text style={$sheetTitle}>What is it?</Text>
+          <View style={$sheetHeader}>
+            <View style={$sheetTitleRow}>
+              <CategoryDisc color={color} icon={icon} size={32} />
+              <Text style={$sheetTitle}>
+                {mode === "add" ? "New category" : isSystem ? "Edit appearance" : "Edit category"}
+              </Text>
+            </View>
+            <Pressable onPress={onClose} hitSlop={12}>
+              <Ionicons name="close" size={20} color={ink3} />
+            </Pressable>
+          </View>
 
-          {/* Color preview + input row */}
-          <View style={$inputRow}>
-            <CategoryDisc color={selectedColor} size={40} />
+          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={$sheetContent}>
+            {/* Name — locked for system categories */}
+            <Text style={$fieldLabel}>Name</Text>
             <TextInput
-              style={$nameInput}
+              style={[$textInput, isSystem && $textInputLocked]}
               value={name}
-              onChangeText={(t) => { setName(t); setError("") }}
+              onChangeText={setName}
               placeholder="Category name"
               placeholderTextColor={ink4}
-              autoFocus
-              returnKeyType="done"
-              onSubmitEditing={handleSave}
+              editable={!isSystem}
+              autoFocus={mode === "add"}
             />
-          </View>
+            {isSystem && (
+              <Text style={$lockedHint}>System categories can't be renamed.</Text>
+            )}
 
-          {error ? <Text style={$errorText}>{error}</Text> : null}
+            {/* Color */}
+            <Text style={$fieldLabel}>Colour</Text>
+            <ColorPicker selected={color} onSelect={setColor} />
 
-          {/* Color picker */}
-          <Text style={$pickerLabel}>Color</Text>
-          <ColorPicker selected={selectedColor} onSelect={setSelectedColor} />
+            {/* Icon */}
+            <Text style={$fieldLabel}>Icon</Text>
+            <IconPicker selected={icon} onSelect={setIcon} />
 
-          {/* Actions */}
-          <View style={$sheetActions}>
-            <Pressable style={$ghostBtn} onPress={onClose}>
-              <Text style={$ghostBtnText}>Cancel</Text>
-            </Pressable>
             <Pressable
-              style={({ pressed }) => [$primaryBtn, pressed && $primaryBtnPressed, saving && $primaryBtnDisabled]}
               onPress={handleSave}
-              disabled={saving}
+              style={({ pressed }) => [$saveBtn, !canSave && $saveBtnDisabled, pressed && canSave && $saveBtnPressed]}
+              disabled={!canSave}
             >
-              <Text style={$primaryBtnText}>{saving ? "Saving…" : "Save"}</Text>
+              <Text style={$saveBtnText}>{mode === "add" ? "Add category" : "Save changes"}</Text>
             </Pressable>
-          </View>
+
+            {mode === "edit" && !isSystem && category?.id != null && (
+              <Pressable
+                onPress={() => onDelete(category.id!)}
+                style={({ pressed }) => [$deleteBtn, pressed && { opacity: 0.7 }]}
+              >
+                <Ionicons name="trash-outline" size={16} color={coral500} />
+                <Text style={$deleteBtnText}>Delete category</Text>
+              </Pressable>
+            )}
+          </ScrollView>
         </Animated.View>
       </KeyboardAvoidingView>
     </Modal>
@@ -223,19 +238,25 @@ function AddCategorySheet({
 
 // ---- Category row ----------------------------------------------------------
 
-function CategoryRow({ category, isFirst }: { category: Category; isFirst: boolean }) {
-  const color = category.color_hex
+type RowProps = {
+  category: Category
+  isFirst: boolean
+  onPress: (c: Category) => void
+}
+
+function CategoryRow({ category, isFirst, onPress }: RowProps) {
   return (
-    <View style={[$catRow, !isFirst && $catRowBorder]}>
-      <CategoryDisc color={color} size={36} />
-      <Text style={$catName}>{category.name}</Text>
-      <View style={[$catColorChip, { backgroundColor: color + "22", borderColor: color + "55" }]}>
-        <View style={[$catColorDot, { backgroundColor: color }]} />
-        <Text style={[$catColorLabel, { color }]}>
-          {PALETTE.find((p) => p.color === color)?.label ?? "Custom"}
-        </Text>
+    <Pressable
+      onPress={() => onPress(category)}
+      style={({ pressed }) => [$row, !isFirst && $rowBorder, pressed && $rowPressed]}
+    >
+      <CategoryDisc color={category.color_hex} icon={category.icon ?? "dots-horizontal"} size={36} />
+      <View style={$rowMid}>
+        <Text style={$rowName}>{category.name}</Text>
+        {category.is_system && <Text style={$systemBadge}>system</Text>}
       </View>
-    </View>
+      <Ionicons name="chevron-forward" size={16} color={ink4} />
+    </Pressable>
   )
 }
 
@@ -243,69 +264,125 @@ function CategoryRow({ category, isFirst }: { category: Category; isFirst: boole
 
 export function CategoriesScreen() {
   const insets = useSafeAreaInsets()
-  const [categories, setCategories] = useState<Category[]>([])
-  const [sheetOpen, setSheetOpen] = useState(false)
+  const router = useRouter()
 
-  const loadCategories = useCallback(async () => {
+  const [categories, setCategories] = useState<Category[]>([])
+  const [loading, setLoading] = useState(true)
+  const [sheetOpen, setSheetOpen] = useState(false)
+  const [sheetMode, setSheetMode] = useState<"add" | "edit">("add")
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null)
+
+  const loadData = useCallback(async () => {
     const repo = container.resolve<CategoryRepository>("categoryRepository")
-    if (!repo) return
+    if (!repo) { setLoading(false); return }
     const all = await repo.findAll()
-    setCategories(all)
+    // System categories first, then user-created
+    setCategories([
+      ...all.filter((c) => c.is_system),
+      ...all.filter((c) => !c.is_system),
+    ])
+    setLoading(false)
   }, [])
 
-  useEffect(() => { loadCategories() }, [loadCategories])
+  useEffect(() => { loadData() }, [loadData])
 
-  function handleSaved(cat: Category) {
-    setCategories((prev) => [...prev, cat])
+  function openAdd() {
+    setEditingCategory(null)
+    setSheetMode("add")
+    setSheetOpen(true)
   }
+
+  function openEdit(cat: Category) {
+    setEditingCategory(cat)
+    setSheetMode("edit")
+    setSheetOpen(true)
+  }
+
+  const handleSave = useCallback(async (data: Omit<Category, "id">, id?: number) => {
+    setSheetOpen(false)
+    const repo = container.resolve<CategoryRepository>("categoryRepository")
+    if (!repo) return
+    if (id != null) {
+      await repo.update({ ...data, id })
+    } else {
+      await createCategory(repo, data.name, data.color_hex, data.icon, data.is_system)
+    }
+    loadData()
+  }, [loadData])
+
+  const handleDelete = useCallback(async (id: number) => {
+    setSheetOpen(false)
+    const repo = container.resolve<CategoryRepository>("categoryRepository")
+    if (!repo) return
+    await repo.delete(id)
+    loadData()
+  }, [loadData])
+
+  const systemCats = categories.filter((c) => c.is_system)
+  const userCats = categories.filter((c) => !c.is_system)
 
   return (
     <View style={[$screen, { paddingTop: insets.top }]}>
       {/* Header */}
       <View style={$header}>
-        <View>
-          <Text style={$eyebrow}>Settings</Text>
-          <Text style={$title}>Categories</Text>
+        <Pressable onPress={() => router.back()} hitSlop={12} style={$backBtn}>
+          <Ionicons name="chevron-back" size={22} color={ink} />
+        </Pressable>
+        <View style={$headerCenter}>
+          <Text style={$headerTitle}>Categories</Text>
         </View>
-        <Pressable
-          onPress={() => setSheetOpen(true)}
-          style={$addBtn}
-          accessibilityLabel="Add category"
-          hitSlop={8}
-        >
-          <Ionicons name="add" size={22} color={coral500} />
+        <Pressable onPress={openAdd} hitSlop={12} style={$addBtn}>
+          <Ionicons name="add" size={24} color={coral500} />
         </Pressable>
       </View>
 
-      <ScrollView
-        contentContainerStyle={[$scrollContent, { paddingBottom: insets.bottom + 24 }]}
-        showsVerticalScrollIndicator={false}
-      >
-        {categories.length === 0 ? (
-          <View style={$emptyWrap}>
-            <MaterialCommunityIcons name="tag-outline" size={40} color={ink4} />
-            <Text style={$emptyTitle}>No categories yet.</Text>
-            <Text style={$emptySub}>Tap + to add your first one.</Text>
-          </View>
-        ) : (
+      {loading ? (
+        <View style={$loadingWrap}>
+          <ActivityIndicator color={coral500} />
+        </View>
+      ) : (
+        <ScrollView
+          contentContainerStyle={[$scrollContent, { paddingBottom: insets.bottom + 32 }]}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* System categories */}
+          <Text style={$sectionLabel}>Tapp defaults</Text>
           <View style={$card}>
-            {categories.map((cat, i) => (
-              <CategoryRow key={String(cat.id ?? i)} category={cat} isFirst={i === 0} />
+            {systemCats.map((cat, i) => (
+              <CategoryRow key={String(cat.id)} category={cat} isFirst={i === 0} onPress={openEdit} />
             ))}
           </View>
-        )}
+          <Text style={$sectionHint}>These can't be deleted or renamed, but you can change their colour and icon.</Text>
 
-        {/* Add inline CTA at the bottom */}
-        <Pressable style={$addRowBtn} onPress={() => setSheetOpen(true)}>
-          <Ionicons name="add-circle-outline" size={20} color={coral500} />
-          <Text style={$addRowBtnText}>Add category</Text>
-        </Pressable>
-      </ScrollView>
+          {/* User categories */}
+          {userCats.length > 0 && (
+            <>
+              <Text style={[$sectionLabel, { marginTop: spacing.s4 }]}>Your categories</Text>
+              <View style={$card}>
+                {userCats.map((cat, i) => (
+                  <CategoryRow key={String(cat.id)} category={cat} isFirst={i === 0} onPress={openEdit} />
+                ))}
+              </View>
+            </>
+          )}
 
-      <AddCategorySheet
+          <Pressable
+            onPress={openAdd}
+            style={({ pressed }) => [$addRowBtn, pressed && { opacity: 0.75 }]}
+          >
+            <Ionicons name="add-circle-outline" size={18} color={coral500} />
+            <Text style={$addRowBtnText}>Add category</Text>
+          </Pressable>
+        </ScrollView>
+      )}
+
+      <CategorySheet
         visible={sheetOpen}
+        mode={sheetMode}
+        category={editingCategory}
+        onSave={handleSave}
+        onDelete={handleDelete}
         onClose={() => setSheetOpen(false)}
-        onSaved={handleSaved}
       />
     </View>
   )
@@ -319,37 +396,44 @@ const $screen: ViewStyle = { flex: 1, backgroundColor: paper }
 
 const $header: ViewStyle = {
   flexDirection: "row",
-  alignItems: "flex-start",
-  justifyContent: "space-between",
-  paddingHorizontal: spacing.s5,
-  paddingTop: spacing.s4,
+  alignItems: "center",
+  paddingHorizontal: spacing.s4,
+  paddingTop: spacing.s3,
   paddingBottom: spacing.s3,
+  borderBottomWidth: 1,
+  borderBottomColor: hairline,
 }
 
-const $eyebrow: TextStyle = {
-  fontSize: 11, letterSpacing: 1.4, textTransform: "uppercase",
-  color: ink3, fontFamily: typography.primary.normal,
+const $backBtn: ViewStyle = { width: 36, alignItems: "flex-start" }
+const $addBtn: ViewStyle = { width: 36, alignItems: "flex-end" }
+const $headerCenter: ViewStyle = { flex: 1, alignItems: "center" }
+
+const $headerTitle: TextStyle = {
+  fontSize: 17, color: ink,
+  fontFamily: typography.primary.semiBold,
 }
 
-const $title: TextStyle = {
-  fontSize: 28, lineHeight: 32, letterSpacing: -0.3,
-  color: ink, fontFamily: typography.primary.bold, marginTop: 3,
-}
-
-const $addBtn: ViewStyle = {
-  width: 36, height: 36, borderRadius: 18,
-  backgroundColor: coral500 + "18",
-  alignItems: "center", justifyContent: "center",
-  marginTop: spacing.s2,
+const $loadingWrap: ViewStyle = {
+  flex: 1, alignItems: "center", justifyContent: "center",
 }
 
 const $scrollContent = {
   paddingHorizontal: spacing.s5,
-  paddingTop: spacing.s2,
-  gap: spacing.s3,
+  paddingTop: spacing.s4,
+  gap: spacing.s2,
 }
 
-// ---- Card + rows -----------------------------------------------------------
+const $sectionLabel: TextStyle = {
+  fontSize: 11, letterSpacing: 1.2, textTransform: "uppercase",
+  color: ink3, fontFamily: typography.primary.normal,
+  marginBottom: spacing.s1,
+}
+
+const $sectionHint: TextStyle = {
+  fontSize: 12, color: ink4,
+  fontFamily: typography.primary.normal,
+  lineHeight: 17,
+}
 
 const $card: ViewStyle = {
   backgroundColor: card,
@@ -360,80 +444,71 @@ const $card: ViewStyle = {
   overflow: "hidden",
 }
 
-const $catRow: ViewStyle = {
+const $row: ViewStyle = {
   flexDirection: "row",
   alignItems: "center",
-  gap: spacing.s3,
   paddingVertical: spacing.s3,
   paddingHorizontal: spacing.s4,
+  gap: spacing.s3,
   backgroundColor: card,
 }
 
-const $catRowBorder: ViewStyle = {
-  borderTopWidth: 1,
-  borderTopColor: hairline,
-}
+const $rowBorder: ViewStyle = { borderTopWidth: 1, borderTopColor: hairline }
+const $rowPressed: ViewStyle = { backgroundColor: paper2 }
 
-const $catName: TextStyle = {
+const $rowMid: ViewStyle = {
   flex: 1,
-  fontSize: 15,
-  color: ink,
-  fontFamily: typography.primary.normal,
-}
-
-const $catColorChip: ViewStyle = {
   flexDirection: "row",
   alignItems: "center",
-  gap: 5,
-  paddingVertical: 3,
-  paddingHorizontal: 9,
-  borderRadius: radii.pill,
-  borderWidth: 1,
+  gap: spacing.s2,
 }
 
-const $catColorDot: ViewStyle = {
-  width: 7, height: 7, borderRadius: 4,
-}
-
-const $catColorLabel: TextStyle = {
-  fontSize: 12,
+const $rowName: TextStyle = {
+  fontSize: 15, color: ink,
   fontFamily: typography.primary.normal,
 }
 
-// ---- Add row CTA -----------------------------------------------------------
+const $systemBadge: TextStyle = {
+  fontSize: 10, color: ink4,
+  fontFamily: typography.primary.normal,
+  letterSpacing: 0.5,
+  textTransform: "uppercase",
+}
+
+const $disc: ViewStyle = {
+  alignItems: "center", justifyContent: "center", flexShrink: 0,
+}
 
 const $addRowBtn: ViewStyle = {
   flexDirection: "row",
   alignItems: "center",
   gap: spacing.s2,
   paddingVertical: spacing.s3,
-  paddingHorizontal: spacing.s1,
+  alignSelf: "center",
+  marginTop: spacing.s2,
 }
 
 const $addRowBtnText: TextStyle = {
-  fontSize: 15, color: coral500, fontFamily: typography.primary.normal,
+  fontSize: 14, color: coral500,
+  fontFamily: typography.primary.medium,
 }
 
-// ---- Bottom sheet ----------------------------------------------------------
+// ---- Sheet -----------------------------------------------------------------
 
 const $scrim: ViewStyle = {
-  position: "absolute",
-  inset: 0 as any,
-  top: 0, left: 0, right: 0, bottom: 0,
-  backgroundColor: "rgba(31, 28, 24, 0.4)",
+  position: "absolute", top: 0, bottom: 0, left: 0, right: 0,
+  backgroundColor: "rgba(0,0,0,0.35)",
 }
 
-const $sheetOuter: ViewStyle = {
-  position: "absolute",
-  bottom: 0, left: 0, right: 0,
+const $kavWrap: ViewStyle = {
+  position: "absolute", bottom: 0, left: 0, right: 0,
 }
 
 const $sheet: ViewStyle = {
-  backgroundColor: card,
+  backgroundColor: paper,
   borderTopLeftRadius: radii.xl,
   borderTopRightRadius: radii.xl,
-  paddingHorizontal: spacing.s5,
-  paddingTop: spacing.s3,
+  maxHeight: "90%",
   ...elevation.sheet,
 }
 
@@ -441,122 +516,131 @@ const $handle: ViewStyle = {
   width: 36, height: 4, borderRadius: 2,
   backgroundColor: hairline,
   alignSelf: "center",
-  marginBottom: spacing.s4,
+  marginTop: spacing.s2,
+  marginBottom: spacing.s2,
 }
 
-const $sheetEyebrow: TextStyle = {
-  fontSize: 11, letterSpacing: 1.4, textTransform: "uppercase",
-  color: ink3, fontFamily: typography.primary.normal,
+const $sheetHeader: ViewStyle = {
+  flexDirection: "row",
+  justifyContent: "space-between",
+  alignItems: "center",
+  paddingHorizontal: spacing.s5,
+  paddingBottom: spacing.s3,
+  borderBottomWidth: 1,
+  borderBottomColor: hairline,
+}
+
+const $sheetTitleRow: ViewStyle = {
+  flexDirection: "row", alignItems: "center", gap: spacing.s3,
 }
 
 const $sheetTitle: TextStyle = {
-  fontSize: 22, letterSpacing: -0.3,
-  color: ink, fontFamily: typography.primary.semiBold,
-  marginTop: spacing.s1, marginBottom: spacing.s4,
+  fontSize: 17, color: ink,
+  fontFamily: typography.primary.semiBold,
 }
 
-const $inputRow: ViewStyle = {
-  flexDirection: "row",
-  alignItems: "center",
+const $sheetContent = {
+  paddingHorizontal: spacing.s5,
+  paddingTop: spacing.s4,
+  paddingBottom: spacing.s8,
   gap: spacing.s3,
-  marginBottom: spacing.s4,
 }
 
-const $nameInput: TextStyle = {
-  flex: 1,
-  paddingVertical: spacing.s3,
-  paddingHorizontal: spacing.s3,
-  borderWidth: 1,
-  borderColor: hairline,
+const $fieldLabel: TextStyle = {
+  fontSize: 11, letterSpacing: 1.2, textTransform: "uppercase",
+  color: ink3, fontFamily: typography.primary.normal,
+}
+
+const $textInput: TextStyle = {
+  backgroundColor: card,
+  borderWidth: 1, borderColor: hairline,
   borderRadius: radii.md,
-  fontSize: 15,
-  color: ink,
+  paddingHorizontal: spacing.s3,
+  paddingVertical: spacing.s2 + 2,
+  fontSize: 15, color: ink,
   fontFamily: typography.primary.normal,
-  backgroundColor: paper,
 }
 
-const $errorText: TextStyle = {
-  fontSize: 13, color: coral600,
-  fontFamily: typography.primary.normal,
-  marginBottom: spacing.s3,
+const $textInputLocked: TextStyle = {
+  opacity: 0.5,
 }
 
-const $pickerLabel: TextStyle = {
-  fontSize: 13, color: ink3,
+const $lockedHint: TextStyle = {
+  fontSize: 12, color: ink4,
   fontFamily: typography.primary.normal,
-  marginBottom: spacing.s3,
+  marginTop: -spacing.s1,
 }
+
+// ---- Icon grid -------------------------------------------------------------
+
+const $iconGrid: ViewStyle = {
+  flexDirection: "row",
+  flexWrap: "wrap",
+  gap: spacing.s2,
+}
+
+const $iconCell: ViewStyle = {
+  width: 44, height: 44, borderRadius: radii.md,
+  alignItems: "center", justifyContent: "center",
+  backgroundColor: card,
+  borderWidth: 1, borderColor: hairline,
+}
+
+const $iconCellActive: ViewStyle = {
+  backgroundColor: ink,
+  borderColor: ink,
+}
+
+// ---- Color row -------------------------------------------------------------
 
 const $colorRow: ViewStyle = {
   flexDirection: "row",
-  gap: spacing.s3,
-  marginBottom: spacing.s5,
+  gap: spacing.s2,
+  flexWrap: "wrap",
 }
 
-const $colorSwatch: ViewStyle = {
-  width: 38, height: 38,
-  borderRadius: 19,
+const $swatch: ViewStyle = {
+  width: 36, height: 36, borderRadius: 18,
   alignItems: "center", justifyContent: "center",
 }
 
-const $colorSwatchSelected: ViewStyle = {
-  borderWidth: 2.5,
-  borderColor: "white",
-  shadowColor: "#000",
-  shadowOffset: { width: 0, height: 1 },
-  shadowOpacity: 0.2,
-  shadowRadius: 4,
-  elevation: 3,
+const $swatchActive: ViewStyle = {
+  borderWidth: 2, borderColor: ink,
 }
 
-const $sheetActions: ViewStyle = {
-  flexDirection: "row",
-  gap: spacing.s3,
-}
+// ---- Save / Delete ---------------------------------------------------------
 
-const $ghostBtn: ViewStyle = {
-  flex: 1,
-  paddingVertical: spacing.s3,
-  borderRadius: radii.pill,
-  alignItems: "center",
-  borderWidth: 1,
-  borderColor: hairline,
-}
-
-const $ghostBtnText: TextStyle = {
-  fontSize: 15, color: ink2,
-  fontFamily: typography.primary.medium,
-}
-
-const $primaryBtn: ViewStyle = {
-  flex: 2,
-  paddingVertical: spacing.s3,
-  borderRadius: radii.pill,
-  alignItems: "center",
+const $saveBtn: ViewStyle = {
   backgroundColor: coral500,
+  borderRadius: radii.pill,
+  paddingVertical: spacing.s3 + 1,
+  alignItems: "center",
   ...elevation.tapButton,
+  marginTop: spacing.s2,
 }
 
-const $primaryBtnPressed: ViewStyle = { backgroundColor: coral600, transform: [{ scale: 0.97 }] }
-const $primaryBtnDisabled: ViewStyle = { backgroundColor: ink4 }
+const $saveBtnDisabled: ViewStyle = { opacity: 0.45 }
 
-const $primaryBtnText: TextStyle = {
+const $saveBtnPressed: ViewStyle = {
+  backgroundColor: coral600,
+  transform: [{ scale: 0.97 }],
+}
+
+const $saveBtnText: TextStyle = {
   fontSize: 15, color: "white",
   fontFamily: typography.primary.medium,
+  letterSpacing: 0.1,
 }
 
-// ---- Empty state -----------------------------------------------------------
-
-const $emptyWrap: ViewStyle = {
-  alignItems: "center", paddingVertical: spacing.s16, gap: spacing.s3,
+const $deleteBtn: ViewStyle = {
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: spacing.s2,
+  paddingVertical: spacing.s3,
 }
 
-const $emptyTitle: TextStyle = {
-  fontSize: 16, color: ink3,
-  fontFamily: typography.primary.semiBold, marginTop: spacing.s2,
-}
-
-const $emptySub: TextStyle = {
-  fontSize: 13, color: ink4,
-  fontFamily: typography.primary.normal, textAlign: "center",
+const $deleteBtnText: TextStyle = {
+  fontSize: 14, color: coral500,
+  fontFamily: typography.primary.normal,
 }
