@@ -6,6 +6,7 @@ export interface ExpenseEventRepository {
   findById(id: number): Promise<ExpenseEvent | undefined>
   update(id: number, amount: number, categoryId: number | null): Promise<void>
   delete(id: number): Promise<void>
+  confirmDay(dateStart: number, dateEnd: number): Promise<void>
 }
 
 export default ExpenseEventRepository

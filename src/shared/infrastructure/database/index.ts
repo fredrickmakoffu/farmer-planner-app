@@ -76,6 +76,7 @@ export function initDatabase(): Db {
     `ALTER TABLE routines ADD COLUMN days_of_week INTEGER NOT NULL DEFAULT 127;`,
     `ALTER TABLE routines ADD COLUMN is_high_confidence INTEGER NOT NULL DEFAULT 0;`,
     `ALTER TABLE routines ADD COLUMN default_amount INTEGER NOT NULL DEFAULT 0;`,
+    `ALTER TABLE expense_events ADD COLUMN confirmed_at INTEGER;`,
   ]
 
   for (const sql of alterStatements) {

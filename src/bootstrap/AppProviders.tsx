@@ -6,6 +6,7 @@ import { KeyboardProvider } from "react-native-keyboard-controller"
 import { initialWindowMetrics, SafeAreaProvider } from "react-native-safe-area-context"
 
 import appBootstrap from "@/bootstrap/app-bootstrap"
+import { setupNotifications, addNotificationResponseListener } from "@/bootstrap/notifications"
 import { container } from "@/bootstrap/container"
 import { initI18n } from "@/i18n"
 import { ThemeProvider } from "@/theme/context"
@@ -60,13 +61,19 @@ export function AppProviders({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!isBootstrapInitialized) return
     console.debug("APP: isBootstrapInitialized true — attempting outbox flush")
-    // attempt a best-effort flush of the on-device outbox after bootstrap
     try {
       const sync = container.resolve<any>("syncEngine")
       if (sync && typeof sync.flush === "function") sync.flush().catch(() => {})
     } catch {
       // ignore
     }
+
+    setupNotifications().catch((err) =>
+      console.error("APP: setupNotifications failed", err),
+    )
+
+    const notificationSub = addNotificationResponseListener()
+    return () => notificationSub.remove()
   }, [isBootstrapInitialized])
 
   useEffect(() => {
