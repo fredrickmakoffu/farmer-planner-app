@@ -9,7 +9,7 @@ private func colorFromHex(_ hex: String) -> Color {
         h = h.map { "\($0)\($0)" }.joined()
     }
     guard h.count == 6, let value = UInt64(h, radix: 16) else {
-        return Color(red: 0.29, green: 0.56, blue: 0.85)
+        return Color(red: 0.91, green: 0.39, blue: 0.29) // coral fallback
     }
     let r = Double((value >> 16) & 0xFF) / 255
     let g = Double((value >> 8) & 0xFF) / 255
@@ -24,22 +24,14 @@ struct TappWidgetView: View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            VStack(spacing: 6) {
-                Circle()
-                    .fill(colorFromHex(entry.colorHex))
-                    .frame(width: 64, height: 64)
-                    .overlay(
-                        Image(systemName: "hand.tap.fill")
-                            .font(.system(size: 24))
-                            .foregroundColor(.white)
-                    )
-
-                Text(entry.categoryName)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(.white)
-                    .lineLimit(1)
-            }
-            .padding(8)
+            Circle()
+                .fill(colorFromHex(entry.colorHex))
+                .padding(6)
+                .overlay(
+                    Image(systemName: entry.iconName)
+                        .font(.system(size: 26, weight: .medium))
+                        .foregroundColor(.white)
+                )
         }
         .widgetURL(entry.deepLink)
     }
