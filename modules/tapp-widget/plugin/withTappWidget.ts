@@ -34,7 +34,6 @@ import android.database.sqlite.SQLiteDatabase
 import android.graphics.Color
 import android.os.Build
 import android.util.Log
-import android.view.View
 import android.widget.RemoteViews
 import __APP_PACKAGE__.R
 import java.util.Calendar
@@ -46,23 +45,18 @@ private const val PREFS_LAST_TAP = "last_tapped_at"
 /** Broadcast action fired when the user taps the widget. */
 const val ACTION_WIDGET_TAP = "__APP_PACKAGE__.widget.ACTION_TAP"
 
-private const val FEEDBACK_COLOR = "#2ECC71"
-private const val FEEDBACK_MS    = 2000L
-private const val DEBOUNCE_MS    = 3000L
+private const val FEEDBACK_MS = 2500L
+private const val DEBOUNCE_MS = 3000L
+private const val DEFAULT_COLOR = "#E8634A"
 
 /**
- * Tapp home-screen widget.
+ * Tapp 1x1 home-screen widget.
  *
  * Tap flow (no app launch):
  *  1. Circle tap fires ACTION_WIDGET_TAP broadcast.
- *  2. onReceive debounces, calls goAsync(), and shows the green feedback state.
+ *  2. onReceive debounces, calls goAsync(), shows category color + checkmark.
  *  3. Background thread writes directly to the app's SQLite DB, then sleeps
- *     FEEDBACK_MS before reverting to the predicted-category color.
- *
- * Display refresh:
- *  The widget reads categories + routines directly from tapp.db on every
- *  onUpdate call. Android calls onUpdate every ~30 min (updatePeriodMillis).
- *  There is no SharedPreferences or Expo Module dependency.
+ *     FEEDBACK_MS before reverting to the predicted-category color + emoji.
  */
 class TappWidgetProvider : AppWidgetProvider() {
 
@@ -84,7 +78,6 @@ class TappWidgetProvider : AppWidgetProvider() {
         )
         if (widgetId == AppWidgetManager.INVALID_APPWIDGET_ID) return
 
-        // Debounce: one log per DEBOUNCE_MS window
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val now = System.currentTimeMillis()
         if (now - prefs.getLong(PREFS_LAST_TAP, 0L) < DEBOUNCE_MS) return
@@ -115,13 +108,13 @@ class TappWidgetProvider : AppWidgetProvider() {
         // ── Visual states ────────────────────────────────────────────────────
 
         private fun showTappedState(context: Context, manager: AppWidgetManager, id: Int) {
+            val predicted = predictFromDb(context)
+            val color = runCatching { Color.parseColor(predicted?.colorHex ?: DEFAULT_COLOR) }
+                .getOrDefault(Color.parseColor(DEFAULT_COLOR))
+
             val views = RemoteViews(context.packageName, R.layout.tapp_widget)
-            views.setInt(R.id.widget_circle, "setColorFilter", Color.parseColor(FEEDBACK_COLOR))
-            views.setViewVisibility(R.id.widget_check_overlay, View.VISIBLE)
-            views.setTextViewText(R.id.widget_category_name, "\\u2713")
-            views.setTextViewText(R.id.widget_amount_hint, "Logged")
-            views.setViewVisibility(R.id.widget_amount_hint, View.VISIBLE)
-            // Remove click target during feedback to block the launcher fallback
+            views.setInt(R.id.widget_circle, "setColorFilter", color)
+            views.setImageViewResource(R.id.widget_icon_image, drawableResForIcon(predicted?.icon ?: ""))
             views.setOnClickPendingIntent(R.id.widget_root, null)
             manager.updateAppWidget(id, views)
         }
@@ -129,21 +122,11 @@ class TappWidgetProvider : AppWidgetProvider() {
         private fun buildNormalViews(context: Context): RemoteViews {
             val views = RemoteViews(context.packageName, R.layout.tapp_widget)
             val predicted = predictFromDb(context)
-            val categoryName = predicted?.first  ?: "Tap"
-            val colorHex     = predicted?.second ?: "#4A90D9"
-            val defaultAmt   = predicted?.third  ?: 0
+            val color = runCatching { Color.parseColor(predicted?.colorHex ?: DEFAULT_COLOR) }
+                .getOrDefault(Color.parseColor(DEFAULT_COLOR))
 
-            val color = runCatching { Color.parseColor(colorHex) }
-                .getOrDefault(Color.parseColor("#4A90D9"))
             views.setInt(R.id.widget_circle, "setColorFilter", color)
-            views.setViewVisibility(R.id.widget_check_overlay, View.GONE)
-            views.setTextViewText(R.id.widget_category_name, categoryName)
-            if (defaultAmt > 0) {
-                views.setTextViewText(R.id.widget_amount_hint, formatAmount(defaultAmt))
-                views.setViewVisibility(R.id.widget_amount_hint, View.VISIBLE)
-            } else {
-                views.setViewVisibility(R.id.widget_amount_hint, View.GONE)
-            }
+            views.setImageViewResource(R.id.widget_icon_image, drawableResForIcon(predicted?.icon ?: ""))
             return views
         }
 
@@ -155,18 +138,35 @@ class TappWidgetProvider : AppWidgetProvider() {
             val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             else PendingIntent.FLAG_UPDATE_CURRENT
-
-            // Attach to root so the entire widget surface fires the broadcast,
-            // not just the circle. Without this, taps on text/padding have no
-            // PendingIntent and some launchers open the app as a fallback.
             val pending = PendingIntent.getBroadcast(context, appWidgetId, intent, flags)
             views.setOnClickPendingIntent(R.id.widget_root, pending)
         }
 
+        // ── Icon mapping ─────────────────────────────────────────────────────
+
+        /** Maps a MaterialCommunityIcons name to its widget Material icon drawable resource. */
+        private fun drawableResForIcon(icon: String): Int = when (icon) {
+            "silverware-fork-knife" -> R.drawable.widget_ic_food
+            "bus"                   -> R.drawable.widget_ic_bus
+            "cart"                  -> R.drawable.widget_ic_cart
+            "lightning-bolt"        -> R.drawable.widget_ic_bolt
+            "movie-open"            -> R.drawable.widget_ic_movie
+            "medical-bag"           -> R.drawable.widget_ic_medical
+            "shopping"              -> R.drawable.widget_ic_shopping
+            "dots-horizontal"       -> R.drawable.widget_ic_more
+            else                    -> R.drawable.widget_ic_tap
+        }
+
         // ── SQLite ───────────────────────────────────────────────────────────
 
-        /** Returns (categoryName, colorHex, defaultAmount) from the DB, or null. */
-        private fun predictFromDb(context: Context): Triple<String, String, Int>? {
+        private data class Prediction(
+            val categoryName: String,
+            val colorHex: String,
+            val icon: String,
+            val defaultAmount: Int,
+        )
+
+        private fun predictFromDb(context: Context): Prediction? {
             val dbFile = context.getDatabasePath("tapp.db")
             if (!dbFile.exists()) return null
             return try {
@@ -175,14 +175,15 @@ class TappWidgetProvider : AppWidgetProvider() {
                 ).use { db ->
                     val categoryId = predictCategory(db) ?: return null
                     db.rawQuery(
-                        "SELECT name, color_hex, default_amount FROM categories WHERE id = ? LIMIT 1",
+                        "SELECT name, color_hex, icon, default_amount FROM categories WHERE id = ? LIMIT 1",
                         arrayOf(categoryId.toString()),
                     ).use { c ->
                         if (!c.moveToFirst()) null
-                        else Triple(
+                        else Prediction(
                             c.getString(0) ?: "Tap",
-                            c.getString(1) ?: "#4A90D9",
-                            if (c.isNull(2)) 0 else c.getInt(2),
+                            c.getString(1) ?: DEFAULT_COLOR,
+                            c.getString(2) ?: "",
+                            if (c.isNull(3)) 0 else c.getInt(3),
                         )
                     }
                 }
@@ -199,8 +200,8 @@ class TappWidgetProvider : AppWidgetProvider() {
                 dbFile.path, null, SQLiteDatabase.OPEN_READWRITE
             ).use { db ->
                 val categoryId = predictCategory(db)
-                val amount     = if (categoryId != null) getDefaultAmount(db, categoryId) else 100
-                val now        = System.currentTimeMillis()
+                val amount = if (categoryId != null) getDefaultAmount(db, categoryId) else 100
+                val now = System.currentTimeMillis()
                 db.insert("expense_events", null, ContentValues().apply {
                     put("amount", amount)
                     if (categoryId != null) put("category_id", categoryId)
@@ -215,9 +216,9 @@ class TappWidgetProvider : AppWidgetProvider() {
         }
 
         private fun predictCategory(db: SQLiteDatabase): Int? {
-            val cal     = Calendar.getInstance()
+            val cal = Calendar.getInstance()
             val minutes = cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
-            val dayBit  = 1 shl (cal.get(Calendar.DAY_OF_WEEK) - 1)
+            val dayBit = 1 shl (cal.get(Calendar.DAY_OF_WEEK) - 1)
 
             db.rawQuery(
                 """SELECT category_id FROM routines
@@ -248,12 +249,6 @@ class TappWidgetProvider : AppWidgetProvider() {
             }
             return 100
         }
-
-        private fun formatAmount(amount: Int): String =
-            if (amount >= 100) {
-                val minor = amount % 100
-                if (minor == 0) "\${amount / 100}" else "\${amount / 100}.\$minor"
-            } else "0.\$amount"
     }
 }
 `.trimStart()
@@ -261,10 +256,10 @@ class TappWidgetProvider : AppWidgetProvider() {
 // ─── AppWidgetProviderInfo XML (inline — no copy needed) ────────────────────
 const WIDGET_INFO_XML = `<?xml version="1.0" encoding="utf-8"?>
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
-    android:minWidth="110dp"
-    android:minHeight="110dp"
-    android:targetCellWidth="2"
-    android:targetCellHeight="2"
+    android:minWidth="40dp"
+    android:minHeight="40dp"
+    android:targetCellWidth="1"
+    android:targetCellHeight="1"
     android:updatePeriodMillis="1800000"
     android:initialLayout="@layout/tapp_widget"
     android:widgetCategory="home_screen"

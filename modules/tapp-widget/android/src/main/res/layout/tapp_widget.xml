@@ -1,77 +1,45 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Tapp widget layout.
+  Tapp 1×1 widget layout — a single circular tap button.
 
   Normal state:
-    widget_circle       → tinted with the predicted category color
-    widget_check_overlay → GONE
-    widget_category_name → "Lunch" (etc.)
-    widget_amount_hint   → "15" or GONE
+    widget_circle      → tinted with the predicted category color
+    widget_icon_image  → Material icon for the predicted category
 
-  Tapped state (shown for ~2 seconds after a successful log):
-    widget_circle       → tinted with FEEDBACK_COLOR (#2ECC71 green)
-    widget_check_overlay → VISIBLE (white checkmark over the circle)
-    widget_category_name → "✓"
-    widget_amount_hint   → "Logged"
+  Tapped state (~2.5 s after a successful log):
+    widget_circle      → tinted with the logged category color
+    widget_icon_image  → same category icon, confirming the log
+  After feedback:
+    Reverts back to normal state.
 -->
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:gravity="center"
-    android:padding="8dp"
     android:background="@android:color/transparent">
 
-    <!-- Stacked circle + checkmark overlay -->
-    <FrameLayout
-        android:layout_width="72dp"
-        android:layout_height="72dp">
+    <!--
+      Colored circle — tinted at runtime via setColorFilter.
+      fitCenter + the 1:1 intrinsic size on the oval drawable ensures the shape
+      always renders as a circle regardless of the widget cell's aspect ratio.
+    -->
+    <ImageView
+        android:id="@+id/widget_circle"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_margin="4dp"
+        android:src="@drawable/widget_circle_bg"
+        android:scaleType="fitCenter"
+        android:contentDescription="@string/widget_tap_button_desc" />
 
-        <!-- Colored oval — tinted at runtime via setColorFilter -->
-        <ImageView
-            android:id="@+id/widget_circle"
-            android:layout_width="72dp"
-            android:layout_height="72dp"
-            android:src="@drawable/widget_circle_bg"
-            android:scaleType="fitCenter"
-            android:contentDescription="@string/widget_tap_button_desc" />
+    <!-- Material icon centered on the circle; swapped at runtime via setImageViewResource -->
+    <ImageView
+        android:id="@+id/widget_icon_image"
+        android:layout_width="32dp"
+        android:layout_height="32dp"
+        android:layout_gravity="center"
+        android:src="@drawable/widget_ic_tap"
+        android:scaleType="fitCenter"
+        android:contentDescription="" />
 
-        <!-- Checkmark shown only in the tapped feedback state -->
-        <ImageView
-            android:id="@+id/widget_check_overlay"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
-            android:layout_gravity="center"
-            android:src="@drawable/widget_ic_check"
-            android:scaleType="fitCenter"
-            android:visibility="gone"
-            android:contentDescription="Logged" />
-
-    </FrameLayout>
-
-    <TextView
-        android:id="@+id/widget_category_name"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
-        android:text="Tap"
-        android:textSize="13sp"
-        android:textStyle="bold"
-        android:textColor="#FFFFFF"
-        android:maxLines="1"
-        android:ellipsize="end"
-        android:gravity="center" />
-
-    <TextView
-        android:id="@+id/widget_amount_hint"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="2dp"
-        android:text=""
-        android:textSize="11sp"
-        android:textColor="#CCFFFFFF"
-        android:gravity="center"
-        android:visibility="gone" />
-
-</LinearLayout>
+</FrameLayout>

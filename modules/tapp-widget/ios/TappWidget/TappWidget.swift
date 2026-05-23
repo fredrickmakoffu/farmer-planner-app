@@ -11,6 +11,6 @@ struct TappWidget: Widget {
         }
         .configurationDisplayName("Tapp")
         .description("Tap once to log an expense.")
-        .supportedFamilies([.systemSmall, .systemMedium])
+        .supportedFamilies([.systemSmall])
     }
 }

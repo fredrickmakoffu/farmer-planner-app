@@ -4,6 +4,8 @@ export type WidgetData = {
   categoryId: number | null
   categoryName: string
   colorHex: string
+  /** MaterialCommunityIcons icon name, e.g. "silverware-fork-knife". */
+  icon: string
   defaultAmount: number
   predictedAt: number
 }

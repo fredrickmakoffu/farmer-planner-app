@@ -10,8 +10,8 @@ import android.database.sqlite.SQLiteDatabase
 import android.graphics.Color
 import android.os.Build
 import android.util.Log
-import android.view.View
 import android.widget.RemoteViews
+import com.tapp.widget.R
 import org.json.JSONObject
 import java.util.Calendar
 
@@ -20,13 +20,14 @@ private const val TAG = "TappWidget"
 /** Custom broadcast action fired when the user taps the widget circle. */
 const val ACTION_WIDGET_TAP = "com.tapp.widget.ACTION_TAP"
 
-/** Success green shown for FEEDBACK_DURATION_MS after a tap. */
-private const val FEEDBACK_COLOR = "#2ECC71"
-private const val FEEDBACK_DURATION_MS = 2000L
+private const val FEEDBACK_DURATION_MS = 2500L
 
 /** Ignore subsequent taps within this window to prevent double-logging. */
 private const val DEBOUNCE_MS = 3000L
 private const val PREFS_LAST_TAP_KEY = "last_tapped_at"
+
+/** Coral brand color shown when there is no predicted category yet. */
+private const val DEFAULT_COLOR = "#E8634A"
 
 /**
  * Home-screen widget for Tapp.
@@ -34,11 +35,11 @@ private const val PREFS_LAST_TAP_KEY = "last_tapped_at"
  * Tap flow (no app launch):
  *  1. Widget circle tap fires ACTION_WIDGET_TAP broadcast back to this receiver.
  *  2. onReceive debounces the tap and calls goAsync() to keep the process alive.
- *  3. Tapped state (green circle + ✓) is shown on the UI thread immediately.
+ *  3. The tapped state is shown immediately: category color + category emoji.
  *  4. A background thread opens the app's SQLite DB directly, predicts the
  *     category from the routines table, and inserts a new expense_events row
  *     plus an outbox row for later sync.
- *  5. After FEEDBACK_DURATION_MS the widget reverts to the predicted-category color.
+ *  5. After FEEDBACK_DURATION_MS the widget reverts to the predicted-category state.
  */
 class TappWidgetProvider : AppWidgetProvider() {
 
@@ -60,7 +61,6 @@ class TappWidgetProvider : AppWidgetProvider() {
         )
         if (widgetId == AppWidgetManager.INVALID_APPWIDGET_ID) return
 
-        // Debounce — ignore taps within DEBOUNCE_MS of the last one
         val prefs = TappWidgetModule.getPrefs(context)
         val lastTap = prefs.getLong(PREFS_LAST_TAP_KEY, 0L)
         val now = System.currentTimeMillis()
@@ -73,7 +73,7 @@ class TappWidgetProvider : AppWidgetProvider() {
         val pendingResult = goAsync()
         val manager = AppWidgetManager.getInstance(context)
 
-        // Show feedback immediately before the DB write starts
+        // Show the predicted category color + icon immediately as feedback
         showTappedState(context, manager, widgetId)
 
         Thread {
@@ -85,7 +85,6 @@ class TappWidgetProvider : AppWidgetProvider() {
             try {
                 Thread.sleep(FEEDBACK_DURATION_MS)
             } catch (_: InterruptedException) {}
-            // Revert to predicted-category color
             updateWidget(context, manager, widgetId)
             pendingResult.finish()
         }.start()
@@ -106,22 +105,32 @@ class TappWidgetProvider : AppWidgetProvider() {
 
         // ── Visual states ────────────────────────────────────────────────────
 
+        /**
+         * Shows the predicted category color + emoji immediately on tap.
+         * Reading from SharedPreferences is safe here because setWidgetData()
+         * was called by the JS side the last time the app foregrounded, so the
+         * prediction matches what we are about to log.
+         */
         private fun showTappedState(
             context: Context,
             manager: AppWidgetManager,
             appWidgetId: Int,
         ) {
+            val json = TappWidgetModule.readWidgetData(context)
+            val state = json?.let { runCatching { JSONObject(it) }.getOrNull() }
+
+            val colorHex = state?.optString("colorHex", DEFAULT_COLOR) ?: DEFAULT_COLOR
+            val color = runCatching { Color.parseColor(colorHex) }
+                .getOrDefault(Color.parseColor(DEFAULT_COLOR))
+
+            val icon = state?.optString("icon", "") ?: ""
+            val iconRes = drawableResForIcon(icon)
+
             val views = RemoteViews(context.packageName, R.layout.tapp_widget)
-            views.setInt(R.id.widget_circle, "setColorFilter", Color.parseColor(FEEDBACK_COLOR))
-            views.setViewVisibility(R.id.widget_check_overlay, View.VISIBLE)
-            views.setTextViewText(R.id.widget_category_name, "✓")
-            views.setTextViewText(R.id.widget_amount_hint, "Logged")
-            views.setViewVisibility(R.id.widget_amount_hint, View.VISIBLE)
-            // Clear the root click intent during the feedback window.
-            // This prevents any tap during the 2-second green state from opening
-            // the app (launcher default) or firing a second log. The debounce in
-            // onReceive is a second line of defence, but removing the intent here
-            // makes the feedback window feel intentionally inert.
+            views.setInt(R.id.widget_circle, "setColorFilter", color)
+            views.setImageViewResource(R.id.widget_icon_image, iconRes)
+
+            // Disable tap during the feedback window (debounce is the second line of defence)
             views.setOnClickPendingIntent(R.id.widget_root, null)
             manager.updateAppWidget(appWidgetId, views)
         }
@@ -131,23 +140,14 @@ class TappWidgetProvider : AppWidgetProvider() {
             val json = TappWidgetModule.readWidgetData(context)
             val state = json?.let { runCatching { JSONObject(it) }.getOrNull() }
 
-            val categoryName = state?.optString("categoryName", "Tap") ?: "Tap"
-            val colorHex = state?.optString("colorHex", "#4A90D9") ?: "#4A90D9"
-            val defaultAmount = state?.optInt("defaultAmount", 0) ?: 0
+            val colorHex = state?.optString("colorHex", DEFAULT_COLOR) ?: DEFAULT_COLOR
+            val icon = state?.optString("icon", "") ?: ""
 
             val color = runCatching { Color.parseColor(colorHex) }
-                .getOrDefault(Color.parseColor("#4A90D9"))
+                .getOrDefault(Color.parseColor(DEFAULT_COLOR))
 
             views.setInt(R.id.widget_circle, "setColorFilter", color)
-            views.setViewVisibility(R.id.widget_check_overlay, View.GONE)
-            views.setTextViewText(R.id.widget_category_name, categoryName)
-
-            if (defaultAmount > 0) {
-                views.setTextViewText(R.id.widget_amount_hint, formatAmount(defaultAmount))
-                views.setViewVisibility(R.id.widget_amount_hint, View.VISIBLE)
-            } else {
-                views.setViewVisibility(R.id.widget_amount_hint, View.GONE)
-            }
+            views.setImageViewResource(R.id.widget_icon_image, drawableResForIcon(icon))
 
             return views
         }
@@ -163,9 +163,22 @@ class TappWidgetProvider : AppWidgetProvider() {
                 PendingIntent.FLAG_UPDATE_CURRENT
 
             val pending = PendingIntent.getBroadcast(context, appWidgetId, intent, flags)
-            // Attach to the root so every tap on the widget surface fires the broadcast,
-            // not just taps that land exactly on widget_circle.
             views.setOnClickPendingIntent(R.id.widget_root, pending)
+        }
+
+        // ── Icon mapping ─────────────────────────────────────────────────────
+
+        /** Maps a MaterialCommunityIcons name to its widget Material icon drawable resource. */
+        private fun drawableResForIcon(icon: String): Int = when (icon) {
+            "silverware-fork-knife" -> R.drawable.widget_ic_food
+            "bus"                   -> R.drawable.widget_ic_bus
+            "cart"                  -> R.drawable.widget_ic_cart
+            "lightning-bolt"        -> R.drawable.widget_ic_bolt
+            "movie-open"            -> R.drawable.widget_ic_movie
+            "medical-bag"           -> R.drawable.widget_ic_medical
+            "shopping"              -> R.drawable.widget_ic_shopping
+            "dots-horizontal"       -> R.drawable.widget_ic_more
+            else                    -> R.drawable.widget_ic_tap
         }
 
         // ── Database write ───────────────────────────────────────────────────
@@ -251,12 +264,5 @@ class TappWidgetProvider : AppWidgetProvider() {
             val cat = if (categoryId != null) ""","category_id":$categoryId""" else ""
             return """{"type":"expense_event","amount":$amount$cat,"created_at":$createdAt}"""
         }
-
-        private fun formatAmount(amount: Int): String =
-            if (amount >= 100) {
-                val major = amount / 100
-                val minor = amount % 100
-                if (minor == 0) "$major" else "$major.$minor"
-            } else "0.$amount"
     }
 }
