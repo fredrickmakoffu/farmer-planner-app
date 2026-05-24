@@ -315,29 +315,40 @@ Examples:
 
 ### Migrations and Versioning
 
-Use forward-only SQL migrations generated and reviewed in source control.
+See [docs/migrations.md](./migrations.md) for the full workflow. Summary:
+
+Tapp uses a custom sequential migration runner (`src/shared/infrastructure/database/migrator.ts`). There is no drizzle-kit CLI involved at runtime. Each migration is a TypeScript file with an `up()` function and a `down()` function. Migrations are tracked in a `_migrations` table and applied in order at app startup.
 
 Rules:
 
-- every schema change gets a numbered migration
-- every migration is deterministic and idempotent where possible
-- destructive changes happen in phases: add new column, dual-write, backfill, remove old column later
-- app startup must block feature access if a required migration fails
+- every schema change gets a new numbered migration file — never edit a past one
+- each migration is applied inside a `withTransactionSync` block: all-or-nothing
+- app startup blocks if a required migration fails — broken schema is never silently accepted
+- destructive changes happen in phases: add new structure, dual-write, backfill, then remove old in a later migration
 
 Versioning strategy:
 
-- database schema version is independent from app version
-- sync payload version is independent from schema version
+- database schema version is tracked by the `_migrations` table, independent of app version
+- sync payload version is independent of schema version
 - API version compatibility lives at the transport boundary
+
+To add a new migration:
+
+```bash
+pnpm migrate:make <migration_name>
+```
+
+Then fill in `up()` and `down()` in the generated file and register it in `migrations.ts`.
 
 ### Evolving Schemas Safely
 
 When new features are added:
 
-- prefer additive changes first
-- backfill locally during migration or lazily on read, depending on cost
+- prefer additive changes first (new columns with defaults, new tables)
+- backfill locally during migration or lazily on read, depending on row count and cost
 - preserve unknown server fields in mapping layers only if required for compatibility
 - keep mappers version-aware during rolling backend deployments
+- use `ALTER TABLE ... ADD COLUMN` for simple additions; multi-phase migrations for removals or renames
 
 ### Offline-First and Sync Strategy
 

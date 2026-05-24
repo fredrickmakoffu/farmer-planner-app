@@ -61,6 +61,10 @@ Operational implications:
 - block app startup on failed required migrations
 - add integration tests for repositories against a test database
 
+## Implementation Note (2026-05-24)
+
+The migration runner is a custom sequential runner, not `drizzle-kit push` or `drizzle-kit generate`. Each migration is a TypeScript file with `up()` and `down()` functions tracked by a `_migrations` table. `drizzle-kit` is not used at runtime. See [docs/migrations.md](../migrations.md) for the full workflow.
+
 ## Alternatives Considered
 
 ### MMKV only

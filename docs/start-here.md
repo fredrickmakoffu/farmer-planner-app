@@ -78,8 +78,8 @@ Changes are grouped by the branch/PR that shipped them.
 - [x] migrated data layer to expo-sqlite v55 synchronous API
 - [x] 8 default system categories seeded in DB migration
 - [x] category `icon` and `is_system` fields added to schema and entity
-- [ ] on-device Drizzle migration runner (deterministic, applies `drizzle/migrations/*.sql` inside the native app) — currently using idempotent `initDatabase()`; decide and implement before first public release
-- [ ] remove dev-only in-memory DB fallback before release
+- [x] on-device migration runner — sequential `_migrations`-table runner in `src/shared/infrastructure/database/migrator.ts`; replaces idempotent `initDatabase()`; legacy DB detection stamps all migrations on first run so existing dev data is preserved
+- [x] remove dev-only in-memory DB fallback before release
 
 ### Phase 3: Server-State Foundation
 
@@ -165,7 +165,7 @@ RUN_NATIVE_INTEGRATION_TESTS=1 pnpm test
 
 ### Must-do before any external users
 
-1. **On-device migration runner** — decide: keep idempotent `initDatabase()` or implement a proper Drizzle migration runner. The idempotent approach works for dev but risks silent data loss in upgrades. Choose and document in an ADR.
+~~1. **On-device migration runner**~~ ✅ Done — sequential `_migrations`-table runner; legacy DB detection preserves existing dev data.
 
 ### Core product completeness
 
@@ -189,3 +189,4 @@ RUN_NATIVE_INTEGRATION_TESTS=1 pnpm test
 - ✅ **Notes/memo on expenses** — `notes TEXT` column added via migration, `ExpenseEvent` entity updated, `updateExpense` use-case updated, notes input added to `EditExpenseSheet`, notes shown in `DailyReviewScreen` event row meta (PR #19)
 - ✅ **Remove dev-only in-memory DB fallback** — removed entirely in commit `3ceeb50` when the data layer was migrated to expo-sqlite v55 synchronous API
 - ✅ **TanStack Query adoption** — all five screens (`CategoriesScreen`, `DailyReviewScreen`, `RoutinesScreen`, `TapToLogScreen`, `FamilyScreen`) migrated from manual `useState`/`loadData` to `useQuery`/`useMutation`; `expensesKeys.prediction()` added (PR #20)
+- ✅ **On-device migration runner** — sequential `_migrations`-table runner (`src/shared/infrastructure/database/migrator.ts`); replaces error-swallowing idempotent `initDatabase()`; legacy DB detection stamps existing installs so no data is lost on upgrade (feat/migration-runner)

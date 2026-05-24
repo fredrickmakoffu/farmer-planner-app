@@ -135,6 +135,18 @@ Fix:
 - keep MMKV for preferences and lightweight device state only
 - use SQLite plus migrations for durable relational data
 
+### AP-03b: Schema Changes Without a Migration
+
+Problem:
+
+- a table column is added, renamed, or removed by editing `initDatabase()` or similar bootstrap code instead of writing a migration
+
+Fix:
+
+- every schema change gets a new migration file via `pnpm migrate:make <name>`
+- never edit an existing migration file — add a new one
+- see [docs/migrations.md](./migrations.md) for the full workflow
+
 ### AP-04: Business Logic in JSX
 
 Problem:

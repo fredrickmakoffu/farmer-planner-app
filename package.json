@@ -29,11 +29,7 @@
     "build:android:device": "eas build --profile development:device --platform android --local",
     "build:android:preview": "eas build --profile preview --platform android --local",
     "build:android:prod": "eas build --profile production --platform android --local",
-    "migrate:generate": "drizzle-kit generate --config drizzle.config.ts",
-    "migrate:push": "drizzle-kit push --config drizzle.config.ts"
-  },
-  "drizzle": {
-    "schema": "drizzle/schema.ts"
+    "migrate:make": "node scripts/make-migration.js"
   },
   "dependencies": {
     "@expo-google-fonts/space-grotesk": "^0.4.0",

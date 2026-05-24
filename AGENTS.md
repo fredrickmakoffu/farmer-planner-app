@@ -50,20 +50,21 @@ Critical note:
 
 ## Developer Workflows
 
-| Task                    | Command                 |
-| ----------------------- | ----------------------- |
-| Start dev client        | `pnpm run start`        |
-| Run Android             | `pnpm run android`      |
-| Run iOS                 | `pnpm run ios`          |
-| Run web                 | `pnpm run web`          |
-| Typecheck               | `pnpm run compile`      |
-| Lint and fix            | `pnpm run lint`         |
-| Lint check              | `pnpm run lint:check`   |
-| Boundary checks         | `pnpm run depcruise`    |
-| Unit tests              | `pnpm run test`         |
-| Watch tests             | `pnpm run test:watch`   |
-| Maestro flows           | `pnpm run test:maestro` |
-| Align Expo dependencies | `pnpm run align-deps`   |
+| Task                    | Command                    |
+| ----------------------- | -------------------------- |
+| Start dev client        | `pnpm run start`           |
+| Run Android             | `pnpm run android`         |
+| Run iOS                 | `pnpm run ios`             |
+| Run web                 | `pnpm run web`             |
+| Typecheck               | `pnpm run compile`         |
+| Lint and fix            | `pnpm run lint`            |
+| Lint check              | `pnpm run lint:check`      |
+| Boundary checks         | `pnpm run depcruise`       |
+| Unit tests              | `pnpm run test`            |
+| Watch tests             | `pnpm run test:watch`      |
+| Maestro flows           | `pnpm run test:maestro`    |
+| Align Expo dependencies | `pnpm run align-deps`      |
+| Create a migration      | `pnpm migrate:make <name>` |
 
 Use local EAS build scripts from `package.json` for simulator, device, preview, and production builds.
 
@@ -100,7 +101,7 @@ Seven hard rules:
 4. Cross-feature imports must go through public entry points, never deep imports into another module.
 5. Shared code does not depend on feature modules.
 6. Secrets belong in secure storage or backend-managed flows, never MMKV.
-7. Durable schema changes require migrations and tests.
+7. Durable schema changes require a migration file via `pnpm migrate:make` — see [docs/migrations.md](docs/migrations.md).
 
 ---
 
@@ -395,21 +396,22 @@ When choosing an implementation:
 
 ## Developer Workflows
 
-| Task                       | Command                   |
-| -------------------------- | ------------------------- |
-| Start dev client           | `pnpm run start`          |
-| Run Android                | `pnpm run android`        |
-| Run iOS                    | `pnpm run ios`            |
-| Run web                    | `pnpm run web`            |
-| Typecheck                  | `pnpm run compile`        |
-| Lint check                 | `pnpm run lint:check`     |
-| Lint and fix               | `pnpm run lint`           |
-| Dependency boundaries      | `pnpm run depcruise`      |
-| Unit and integration tests | `pnpm run test`           |
-| Jest watch mode            | `pnpm run test:watch`     |
-| Maestro flows              | `pnpm run test:maestro`   |
-| Align Expo dependencies    | `pnpm run align-deps`     |
-| Clean prebuild             | `pnpm run prebuild:clean` |
+| Task                       | Command                    |
+| -------------------------- | -------------------------- |
+| Start dev client           | `pnpm run start`           |
+| Run Android                | `pnpm run android`         |
+| Run iOS                    | `pnpm run ios`             |
+| Run web                    | `pnpm run web`             |
+| Typecheck                  | `pnpm run compile`         |
+| Lint check                 | `pnpm run lint:check`      |
+| Lint and fix               | `pnpm run lint`            |
+| Dependency boundaries      | `pnpm run depcruise`       |
+| Unit and integration tests | `pnpm run test`            |
+| Jest watch mode            | `pnpm run test:watch`      |
+| Maestro flows              | `pnpm run test:maestro`    |
+| Align Expo dependencies    | `pnpm run align-deps`      |
+| Clean prebuild             | `pnpm run prebuild:clean`  |
+| Create a migration         | `pnpm migrate:make <name>` |
 
 ---
 
