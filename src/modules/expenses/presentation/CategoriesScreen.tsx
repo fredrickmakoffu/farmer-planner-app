@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { expensesKeys } from "@/shared/query-keys"
 import {
   Animated,
   KeyboardAvoidingView,
@@ -266,25 +268,33 @@ export function CategoriesScreen() {
   const insets = useSafeAreaInsets()
   const router = useRouter()
 
-  const [categories, setCategories] = useState<Category[]>([])
-  const [loading, setLoading] = useState(true)
+  const queryClient = useQueryClient()
   const [sheetOpen, setSheetOpen] = useState(false)
   const [sheetMode, setSheetMode] = useState<"add" | "edit">("add")
   const [editingCategory, setEditingCategory] = useState<Category | null>(null)
 
-  const loadData = useCallback(async () => {
-    const repo = container.resolve<CategoryRepository>("categoryRepository")
-    if (!repo) { setLoading(false); return }
-    const all = await repo.findAll()
-    // System categories first, then user-created
-    setCategories([
-      ...all.filter((c) => c.is_system),
-      ...all.filter((c) => !c.is_system),
-    ])
-    setLoading(false)
-  }, [])
+  const { data: allCategories = [], isLoading: loading } = useQuery({
+    queryKey: expensesKeys.categories(),
+    queryFn: () => container.resolve<CategoryRepository>("categoryRepository")!.findAll(),
+  })
 
-  useEffect(() => { loadData() }, [loadData])
+  const saveMutation = useMutation({
+    mutationFn: async ({ data, id }: { data: Omit<Category, "id">; id?: number }) => {
+      const repo = container.resolve<CategoryRepository>("categoryRepository")!
+      if (id != null) {
+        await repo.update({ ...data, id })
+      } else {
+        await createCategory(repo, data.name, data.color_hex, data.icon, data.is_system)
+      }
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: expensesKeys.categories() }),
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) =>
+      container.resolve<CategoryRepository>("categoryRepository")!.delete(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: expensesKeys.categories() }),
+  })
 
   function openAdd() {
     setEditingCategory(null)
@@ -298,28 +308,18 @@ export function CategoriesScreen() {
     setSheetOpen(true)
   }
 
-  const handleSave = useCallback(async (data: Omit<Category, "id">, id?: number) => {
+  function handleSave(data: Omit<Category, "id">, id?: number) {
     setSheetOpen(false)
-    const repo = container.resolve<CategoryRepository>("categoryRepository")
-    if (!repo) return
-    if (id != null) {
-      await repo.update({ ...data, id })
-    } else {
-      await createCategory(repo, data.name, data.color_hex, data.icon, data.is_system)
-    }
-    loadData()
-  }, [loadData])
+    saveMutation.mutate({ data, id })
+  }
 
-  const handleDelete = useCallback(async (id: number) => {
+  function handleDelete(id: number) {
     setSheetOpen(false)
-    const repo = container.resolve<CategoryRepository>("categoryRepository")
-    if (!repo) return
-    await repo.delete(id)
-    loadData()
-  }, [loadData])
+    deleteMutation.mutate(id)
+  }
 
-  const systemCats = categories.filter((c) => c.is_system)
-  const userCats = categories.filter((c) => !c.is_system)
+  const systemCats = allCategories.filter((c) => c.is_system)
+  const userCats = allCategories.filter((c) => !c.is_system)
 
   return (
     <View style={[$screen, { paddingTop: insets.top }]}>

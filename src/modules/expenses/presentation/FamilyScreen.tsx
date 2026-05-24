@@ -1,15 +1,17 @@
-import { useCallback, useEffect, useState } from "react"
+import { useMemo, useState } from "react"
 import { Pressable, ScrollView, View, ViewStyle, TextStyle } from "react-native"
-import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons"
+import { useQuery } from "@tanstack/react-query"
+import { useSafeAreaInsets } from "react-native-safe-area-context"
 
-import { Text } from "@/components/Text"
 import { container } from "@/bootstrap/container"
+import { Text } from "@/components/Text"
 import { loadString, saveString } from "@/utils/storage"
 import type { Category } from "@/modules/expenses/domain/entities/category"
-import type { CategoryRepository } from "@/modules/expenses/domain/repositories/category-repository"
 import type { ExpenseEvent } from "@/modules/expenses/domain/entities/expense-event"
+import type { CategoryRepository } from "@/modules/expenses/domain/repositories/category-repository"
 import type { ExpenseEventRepository } from "@/modules/expenses/domain/repositories/expense-event-repository"
+import { expensesKeys } from "@/shared/query-keys"
 import {
   paper,
   paper2,
@@ -187,9 +189,6 @@ function SectionLabel({ label }: { label: string }) {
 export function FamilyScreen() {
   const insets = useSafeAreaInsets()
 
-  const [events, setEvents] = useState<ExpenseEvent[]>([])
-  const [categoryMap, setCategoryMap] = useState<Map<number, Category>>(new Map())
-  const [loading, setLoading] = useState(true)
   const [familyName, setFamilyName] = useState(
     () => loadString(FAMILY_NAME_KEY) ?? "Your household",
   )
@@ -197,27 +196,23 @@ export function FamilyScreen() {
   const [nameSheetOpen, setNameSheetOpen] = useState(false)
   const [inviteSheetOpen, setInviteSheetOpen] = useState(false)
 
-  const loadData = useCallback(async () => {
-    const expenseRepo = container.resolve<ExpenseEventRepository>("expenseEventRepository")
-    const categoryRepo = container.resolve<CategoryRepository>("categoryRepository")
-    if (!expenseRepo || !categoryRepo) { setLoading(false); return }
+  const { data: events = [], isLoading: loading } = useQuery({
+    queryKey: expensesKeys.events(),
+    queryFn: () => container.resolve<ExpenseEventRepository>("expenseEventRepository")!.findAll(),
+  })
 
-    const [allEvents, allCats] = await Promise.all([
-      expenseRepo.findAll(),
-      categoryRepo.findAll(),
-    ])
+  const { data: allCategories = [] } = useQuery({
+    queryKey: expensesKeys.categories(),
+    queryFn: () => container.resolve<CategoryRepository>("categoryRepository")!.findAll(),
+  })
 
+  const categoryMap = useMemo(() => {
     const map = new Map<number, Category>()
-    for (const cat of allCats) {
+    for (const cat of allCategories) {
       if (cat.id != null) map.set(cat.id, cat)
     }
-
-    setEvents(allEvents)
-    setCategoryMap(map)
-    setLoading(false)
-  }, [])
-
-  useEffect(() => { loadData() }, [loadData])
+    return map
+  }, [allCategories])
 
   function handleSaveName(name: string) {
     saveString(FAMILY_NAME_KEY, name)

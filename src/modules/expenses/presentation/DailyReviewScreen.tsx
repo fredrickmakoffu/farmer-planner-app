@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react"
+import { useMemo, useState } from "react"
 import {
   ActivityIndicator,
   Modal,
@@ -9,19 +9,21 @@ import {
   ViewStyle,
   TextStyle,
 } from "react-native"
-import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { MaterialCommunityIcons, Ionicons } from "@expo/vector-icons"
 import DateTimePicker from "@react-native-community/datetimepicker"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useSafeAreaInsets } from "react-native-safe-area-context"
 
-import { Text } from "@/components/Text"
 import { container } from "@/bootstrap/container"
+import { Text } from "@/components/Text"
 import { confirmDay } from "@/modules/expenses/application/confirm-day"
 import { deleteExpense } from "@/modules/expenses/application/delete-expense"
 import { updateExpense } from "@/modules/expenses/application/update-expense"
 import type { Category } from "@/modules/expenses/domain/entities/category"
-import type { CategoryRepository } from "@/modules/expenses/domain/repositories/category-repository"
 import type { ExpenseEvent } from "@/modules/expenses/domain/entities/expense-event"
+import type { CategoryRepository } from "@/modules/expenses/domain/repositories/category-repository"
 import type { ExpenseEventRepository } from "@/modules/expenses/domain/repositories/expense-event-repository"
+import { expensesKeys } from "@/shared/query-keys"
 import {
   paper,
   paper2,
@@ -285,78 +287,87 @@ function EmptyState() {
 export function DailyReviewScreen() {
   const insets = useSafeAreaInsets()
 
+  const queryClient = useQueryClient()
+
   const [selectedDate, setSelectedDate] = useState(() => {
     const d = new Date()
     d.setHours(0, 0, 0, 0)
     return d
   })
-  const [allEvents, setAllEvents] = useState<ExpenseEvent[]>([])
-  const [categories, setCategories] = useState<Category[]>([])
-  const [categoryMap, setCategoryMap] = useState<Map<number, Category>>(new Map())
-  const [loading, setLoading] = useState(true)
   const [editingEvent, setEditingEvent] = useState<ExpenseEvent | null>(null)
   const [showDatePicker, setShowDatePicker] = useState(false)
   const [showConfirmSheet, setShowConfirmSheet] = useState(false)
 
-  const loadData = useCallback(async () => {
-    const expenseRepo = container.resolve<ExpenseEventRepository>("expenseEventRepository")
-    const categoryRepo = container.resolve<CategoryRepository>("categoryRepository")
-    if (!expenseRepo || !categoryRepo) {
-      setLoading(false)
-      return
-    }
+  const { data: allEvents = [], isLoading: loading } = useQuery({
+    queryKey: expensesKeys.events(),
+    queryFn: () => container.resolve<ExpenseEventRepository>("expenseEventRepository")!.findAll(),
+  })
 
-    const [fetchedEvents, allCategories] = await Promise.all([
-      expenseRepo.findAll(),
-      categoryRepo.findAll(),
-    ])
+  const { data: allCategories = [] } = useQuery({
+    queryKey: expensesKeys.categories(),
+    queryFn: () => container.resolve<CategoryRepository>("categoryRepository")!.findAll(),
+  })
 
+  const categoryMap = useMemo(() => {
     const map = new Map<number, Category>()
     for (const cat of allCategories) {
       if (cat.id != null) map.set(cat.id, cat)
     }
+    return map
+  }, [allCategories])
 
-    setAllEvents(fetchedEvents)
-    setCategories(allCategories)
-    setCategoryMap(map)
-    setLoading(false)
-  }, [])
-
-  useEffect(() => {
-    loadData()
-  }, [loadData])
-
-  const handleSave = useCallback(
-    async (id: number, amount: number, categoryId: number | null, notes: string | null) => {
-      const expenseRepo = container.resolve<ExpenseEventRepository>("expenseEventRepository")
+  const updateMutation = useMutation({
+    mutationFn: ({
+      id,
+      amount,
+      categoryId,
+      notes,
+    }: {
+      id: number
+      amount: number
+      categoryId: number | null
+      notes: string | null
+    }) => {
+      const expenseRepo = container.resolve<ExpenseEventRepository>("expenseEventRepository")!
       const sync = container.resolve<any>("syncEngine")
-      if (!expenseRepo) return
-      await updateExpense(expenseRepo, id, amount, categoryId, sync, notes)
-      loadData()
+      return updateExpense(expenseRepo, id, amount, categoryId, sync, notes)
     },
-    [loadData],
-  )
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: expensesKeys.events() }),
+  })
 
-  const handleConfirmDay = useCallback(async () => {
-    const expenseRepo = container.resolve<ExpenseEventRepository>("expenseEventRepository")
-    const sync = container.resolve<any>("syncEngine")
-    if (!expenseRepo) return
-    const { start, end } = getDateRange(selectedDate)
-    await confirmDay(expenseRepo, start, end, sync)
-    setShowConfirmSheet(false)
-    loadData()
-  }, [selectedDate, loadData])
-
-  const handleDelete = useCallback(
-    async (id: number) => {
-      const expenseRepo = container.resolve<ExpenseEventRepository>("expenseEventRepository")
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => {
+      const expenseRepo = container.resolve<ExpenseEventRepository>("expenseEventRepository")!
       const sync = container.resolve<any>("syncEngine")
-      if (!expenseRepo) return
-      await deleteExpense(expenseRepo, id, sync)
-      loadData()
+      return deleteExpense(expenseRepo, id, sync)
     },
-    [loadData],
-  )
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: expensesKeys.events() }),
+  })
+
+  const confirmMutation = useMutation({
+    mutationFn: () => {
+      const expenseRepo = container.resolve<ExpenseEventRepository>("expenseEventRepository")!
+      const sync = container.resolve<any>("syncEngine")
+      const { start, end } = getDateRange(selectedDate)
+      return confirmDay(expenseRepo, start, end, sync)
+    },
+    onSuccess: () => {
+      setShowConfirmSheet(false)
+      queryClient.invalidateQueries({ queryKey: expensesKeys.events() })
+    },
+  })
+
+  function handleSave(id: number, amount: number, categoryId: number | null, notes: string | null) {
+    updateMutation.mutate({ id, amount, categoryId, notes })
+  }
+
+  function handleConfirmDay() {
+    confirmMutation.mutate()
+  }
+
+  function handleDelete(id: number) {
+    deleteMutation.mutate(id)
+  }
 
   const { start: dayStart, end: dayEnd } = getDateRange(selectedDate)
   const events = allEvents.filter(
@@ -454,7 +465,7 @@ export function DailyReviewScreen() {
       <EditExpenseSheet
         visible={editingEvent !== null}
         event={editingEvent}
-        categories={categories}
+        categories={allCategories}
         onClose={() => setEditingEvent(null)}
         onSave={handleSave}
         onDelete={handleDelete}

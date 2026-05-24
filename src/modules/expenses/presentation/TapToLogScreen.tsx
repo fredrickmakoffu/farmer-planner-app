@@ -1,21 +1,23 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useMemo, useRef, useState } from "react"
 import { Animated, Pressable, View, ViewStyle, TextStyle } from "react-native"
-import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { LinearGradient } from "expo-linear-gradient"
-import { MaterialCommunityIcons } from "@expo/vector-icons"
-import { Ionicons } from "@expo/vector-icons"
+import { MaterialCommunityIcons, Ionicons } from "@expo/vector-icons"
 import { useRouter } from "expo-router"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useSafeAreaInsets } from "react-native-safe-area-context"
 
-import { Text } from "@/components/Text"
 import { container } from "@/bootstrap/container"
+import { Text } from "@/components/Text"
 import { createExpense } from "@/modules/expenses/application/create-expense"
 import { predictCategory } from "@/modules/expenses/application/predict-category"
 import type { Category } from "@/modules/expenses/domain/entities/category"
+import type { ExpenseEvent } from "@/modules/expenses/domain/entities/expense-event"
+import type { Routine } from "@/modules/expenses/domain/entities/routine"
 import type { CategoryRepository } from "@/modules/expenses/domain/repositories/category-repository"
 import type { ExpenseEventRepository } from "@/modules/expenses/domain/repositories/expense-event-repository"
 import type { RoutineRepository } from "@/modules/expenses/domain/repositories/routine-repository"
-import type { Routine } from "@/modules/expenses/domain/entities/routine"
-import type { ExpenseEvent } from "@/modules/expenses/domain/entities/expense-event"
+import { expensesKeys } from "@/shared/query-keys"
+
 import { PickRoutineSheet } from "./tap/PickRoutineSheet"
 import {
   paper,
@@ -139,66 +141,104 @@ export function TapToLogScreen() {
   const router = useRouter()
   const scaleAnim = useRef(new Animated.Value(1)).current
 
-  const [total, setTotal] = useState(0)
-  const [predictedCategory, setPredictedCategory] = useState<Category | null>(null)
-  const [prediction, setPrediction] = useState<{ amount: number; source: "routine" | "history" | "fallback"; routineName?: string }>({ amount: 0, source: "fallback" })
-  const [lastEvent, setLastEvent] = useState<ExpenseEvent | null>(null)
-  const [lastCategory, setLastCategory] = useState<Category | null>(null)
-  const [allRoutines, setAllRoutines] = useState<Routine[]>([])
-  const [allCategories, setAllCategories] = useState<Category[]>([])
+  const queryClient = useQueryClient()
   const [pickSheetOpen, setPickSheetOpen] = useState(false)
-  const [nowMinutes, setNowMinutes] = useState(0)
+  const [nowMinutes, setNowMinutes] = useState(() => {
+    const now = new Date()
+    return now.getHours() * 60 + now.getMinutes()
+  })
 
-  const loadData = useCallback(async () => {
-    const expenseRepo = container.resolve<ExpenseEventRepository>("expenseEventRepository")
-    const categoryRepo = container.resolve<CategoryRepository>("categoryRepository")
-    const routineRepo = container.resolve<RoutineRepository>("routineRepository")
-    if (!expenseRepo || !categoryRepo) return
+  const { data: allEvents = [] } = useQuery({
+    queryKey: expensesKeys.events(),
+    queryFn: () => container.resolve<ExpenseEventRepository>("expenseEventRepository")!.findAll(),
+  })
 
-    const [allEvents, result, cats, routines] = await Promise.all([
-      expenseRepo.findAll(),
-      predictCategory(categoryRepo, expenseRepo, routineRepo),
-      categoryRepo.findAll(),
-      routineRepo ? routineRepo.findAll() : Promise.resolve([]),
-    ])
+  const { data: allCategories = [] } = useQuery({
+    queryKey: expensesKeys.categories(),
+    queryFn: () => container.resolve<CategoryRepository>("categoryRepository")!.findAll(),
+  })
 
+  const { data: allRoutines = [] } = useQuery({
+    queryKey: expensesKeys.routines(),
+    queryFn: () => {
+      const repo = container.resolve<RoutineRepository>("routineRepository")
+      return repo ? repo.findAll() : Promise.resolve([])
+    },
+  })
+
+  const { data: predictionResult } = useQuery({
+    queryKey: expensesKeys.prediction(),
+    queryFn: () => {
+      const categoryRepo = container.resolve<CategoryRepository>("categoryRepository")!
+      const expenseRepo = container.resolve<ExpenseEventRepository>("expenseEventRepository")!
+      const routineRepo = container.resolve<RoutineRepository>("routineRepository")
+      return predictCategory(categoryRepo, expenseRepo, routineRepo)
+    },
+  })
+
+  const categoryMap = useMemo(() => {
+    const map = new Map<number, Category>()
+    for (const cat of allCategories) {
+      if (cat.id != null) map.set(cat.id, cat)
+    }
+    return map
+  }, [allCategories])
+
+  const todayEvents = useMemo(() => {
     const now = new Date()
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
     const todayEnd = todayStart + 86_400_000
-    const todayEvents = allEvents.filter(
-      (e) => e.created_at >= todayStart && e.created_at < todayEnd,
+    return allEvents.filter(
+      (e) => (e.created_at ?? 0) >= todayStart && (e.created_at ?? 0) < todayEnd,
     )
+  }, [allEvents])
 
-    const todayTotal = todayEvents.reduce((sum, e) => sum + (e.amount ?? 0), 0)
-    setTotal(todayTotal)
-    setPrediction({ amount: result.defaultAmount, source: result.source, routineName: result.routineName })
-    setAllCategories(cats)
-    setAllRoutines(routines)
+  const total = useMemo(() => todayEvents.reduce((s, e) => s + (e.amount ?? 0), 0), [todayEvents])
+  const lastEvent: ExpenseEvent | null = todayEvents[0] ?? null
+  const lastCategory: Category | null =
+    lastEvent?.category_id != null
+      ? (categoryMap.get(lastEvent.category_id as number) ?? null)
+      : null
+  const predictedCategory: Category | null =
+    predictionResult?.categoryId != null
+      ? (categoryMap.get(predictionResult.categoryId) ?? null)
+      : null
+  const prediction = {
+    amount: predictionResult?.defaultAmount ?? 0,
+    source: (predictionResult?.source ?? "fallback") as "routine" | "history" | "fallback",
+    routineName: predictionResult?.routineName,
+  }
 
-    setNowMinutes(now.getHours() * 60 + now.getMinutes())
+  const invalidateAfterTap = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: expensesKeys.events() }),
+      queryClient.invalidateQueries({ queryKey: expensesKeys.prediction() }),
+    ])
 
-    if (result.categoryId != null) {
-      const cat = await categoryRepo.findById(result.categoryId)
-      setPredictedCategory(cat ?? null)
-    }
+  const createExpenseMutation = useMutation({
+    mutationFn: ({ amount, categoryId }: { amount: number; categoryId?: number | null }) => {
+      const expenseRepo = container.resolve<ExpenseEventRepository>("expenseEventRepository")!
+      const sync = container.resolve<any>("syncEngine")
+      return createExpense(expenseRepo, amount, categoryId, sync)
+    },
+    onSuccess: invalidateAfterTap,
+  })
 
-    // findAll returns DESC order; todayEvents[0] is the most recent today
-    if (todayEvents.length > 0) {
-      const latest = todayEvents[0]
-      setLastEvent(latest)
-      if (latest.category_id != null) {
-        const cat = await categoryRepo.findById(latest.category_id as number)
-        setLastCategory(cat ?? null)
-      }
-    } else {
-      setLastEvent(null)
-      setLastCategory(null)
-    }
-  }, [])
-
-  useEffect(() => {
-    loadData().catch((err) => console.error("TapToLogScreen: loadData failed", err))
-  }, [loadData])
+  const createRoutineMutation = useMutation({
+    mutationFn: async (routine: Omit<Routine, "id">) => {
+      const expenseRepo = container.resolve<ExpenseEventRepository>("expenseEventRepository")!
+      const routineRepo = container.resolve<RoutineRepository>("routineRepository")!
+      const sync = container.resolve<any>("syncEngine")
+      await routineRepo.create(routine)
+      await createExpense(expenseRepo, routine.default_amount, routine.category_id, sync)
+    },
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: expensesKeys.events() }),
+        queryClient.invalidateQueries({ queryKey: expensesKeys.routines() }),
+        queryClient.invalidateQueries({ queryKey: expensesKeys.prediction() }),
+      ]),
+  })
 
   function animatePress(toValue: number, cb?: () => void) {
     Animated.timing(scaleAnim, {
@@ -208,46 +248,28 @@ export function TapToLogScreen() {
     }).start(cb)
   }
 
-  async function handleTap() {
+  function handleTap() {
     animatePress(0.92, () => animatePress(1))
-
-    const expenseRepo = container.resolve<ExpenseEventRepository>("expenseEventRepository")
-    const categoryRepo = container.resolve<CategoryRepository>("categoryRepository")
-    const routineRepo = container.resolve<RoutineRepository>("routineRepository")
-    const sync = container.resolve<any>("syncEngine")
-    if (!expenseRepo || !categoryRepo) return
-
-    const result = await predictCategory(categoryRepo, expenseRepo, routineRepo)
-
-    if (result.source === "routine" && result.defaultAmount > 0) {
-      await createExpense(expenseRepo, result.defaultAmount, result.categoryId, sync)
-      loadData()
+    if (predictionResult?.source === "routine" && (predictionResult.defaultAmount ?? 0) > 0) {
+      createExpenseMutation.mutate({
+        amount: predictionResult.defaultAmount,
+        categoryId: predictionResult.categoryId,
+      })
     } else {
-      const now = new Date()
-      setNowMinutes(now.getHours() * 60 + now.getMinutes())
+      setNowMinutes(new Date().getHours() * 60 + new Date().getMinutes())
       setPickSheetOpen(true)
     }
   }
 
-  const handleLog = useCallback(async (categoryId: number, amount: number) => {
+  function handleLog(categoryId: number, amount: number) {
     setPickSheetOpen(false)
-    const expenseRepo = container.resolve<ExpenseEventRepository>("expenseEventRepository")
-    const sync = container.resolve<any>("syncEngine")
-    if (!expenseRepo) return
-    await createExpense(expenseRepo, amount, categoryId, sync)
-    loadData()
-  }, [loadData])
+    createExpenseMutation.mutate({ amount, categoryId })
+  }
 
-  const handleSaveRoutineAndLog = useCallback(async (routine: Omit<Routine, "id">) => {
+  function handleSaveRoutineAndLog(routine: Omit<Routine, "id">) {
     setPickSheetOpen(false)
-    const expenseRepo = container.resolve<ExpenseEventRepository>("expenseEventRepository")
-    const routineRepo = container.resolve<RoutineRepository>("routineRepository")
-    const sync = container.resolve<any>("syncEngine")
-    if (!expenseRepo || !routineRepo) return
-    await routineRepo.create(routine)
-    await createExpense(expenseRepo, routine.default_amount, routine.category_id, sync)
-    loadData()
-  }, [loadData])
+    createRoutineMutation.mutate(routine)
+  }
 
   const pillColor = resolveCategoryColor(predictedCategory?.name, predictedCategory?.color_hex)
   const pillLabel = prediction.routineName ?? predictedCategory?.name ?? "Expense"

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   Animated,
   KeyboardAvoidingView,
@@ -13,17 +13,19 @@ import {
   TextStyle,
   ActivityIndicator,
 } from "react-native"
-import { useSafeAreaInsets } from "react-native-safe-area-context"
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons"
 import { useRouter } from "expo-router"
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useSafeAreaInsets } from "react-native-safe-area-context"
 
-import { Text } from "@/components/Text"
 import { container } from "@/bootstrap/container"
+import { Text } from "@/components/Text"
 import { createCategory } from "@/modules/expenses/application/create-category"
-import type { Routine } from "@/modules/expenses/domain/entities/routine"
-import type { RoutineRepository } from "@/modules/expenses/domain/repositories/routine-repository"
 import type { Category } from "@/modules/expenses/domain/entities/category"
+import type { Routine } from "@/modules/expenses/domain/entities/routine"
 import type { CategoryRepository } from "@/modules/expenses/domain/repositories/category-repository"
+import type { RoutineRepository } from "@/modules/expenses/domain/repositories/routine-repository"
+import { expensesKeys } from "@/shared/query-keys"
 import {
   paper, paper2, card, ink, ink2, ink3, ink4,
   coral500, coral600, hairline,
@@ -620,37 +622,54 @@ export function RoutinesScreen() {
   const insets = useSafeAreaInsets()
   const router = useRouter()
 
-  const [routines, setRoutines] = useState<Routine[]>([])
-  const [categories, setCategories] = useState<Category[]>([])
-  const [categoryMap, setCategoryMap] = useState<Map<number, Category>>(new Map())
-  const [loading, setLoading] = useState(true)
+  const queryClient = useQueryClient()
   const [editingRoutine, setEditingRoutine] = useState<Routine | null>(null)
   const [sheetMode, setSheetMode] = useState<"edit" | "add">("add")
   const [sheetOpen, setSheetOpen] = useState(false)
   const [scrollEnabled, setScrollEnabled] = useState(true)
 
-  const loadData = useCallback(async () => {
-    const routineRepo = container.resolve<RoutineRepository>("routineRepository")
-    const categoryRepo = container.resolve<CategoryRepository>("categoryRepository")
-    if (!routineRepo || !categoryRepo) { setLoading(false); return }
+  const { data: routines = [], isLoading: loading } = useQuery({
+    queryKey: expensesKeys.routines(),
+    queryFn: () => container.resolve<RoutineRepository>("routineRepository")!.findAll(),
+  })
 
-    const [allRoutines, allCategories] = await Promise.all([
-      routineRepo.findAll(),
-      categoryRepo.findAll(),
-    ])
+  const { data: categories = [] } = useQuery({
+    queryKey: expensesKeys.categories(),
+    queryFn: () => container.resolve<CategoryRepository>("categoryRepository")!.findAll(),
+  })
 
+  const categoryMap = useMemo(() => {
     const map = new Map<number, Category>()
-    for (const cat of allCategories) {
+    for (const cat of categories) {
       if (cat.id != null) map.set(cat.id, cat)
     }
+    return map
+  }, [categories])
 
-    setRoutines(allRoutines)
-    setCategories(allCategories)
-    setCategoryMap(map)
-    setLoading(false)
-  }, [])
+  const saveMutation = useMutation({
+    mutationFn: async ({ data, id }: { data: Omit<Routine, "id">; id?: number }) => {
+      const routineRepo = container.resolve<RoutineRepository>("routineRepository")!
+      if (id != null) {
+        const existing = routines.find((r) => r.id === id)
+        await routineRepo.update({ ...data, id, sort_order: existing?.sort_order ?? 0 })
+      } else {
+        await routineRepo.create(data)
+      }
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: expensesKeys.routines() }),
+  })
 
-  useEffect(() => { loadData() }, [loadData])
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) =>
+      container.resolve<RoutineRepository>("routineRepository")!.delete(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: expensesKeys.routines() }),
+  })
+
+  const reorderMutation = useMutation({
+    mutationFn: (updates: { id: number; sort_order: number }[]) =>
+      container.resolve<RoutineRepository>("routineRepository")!.updateSortOrders(updates),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: expensesKeys.routines() }),
+  })
 
   function openAdd() {
     setEditingRoutine(null)
@@ -664,33 +683,19 @@ export function RoutinesScreen() {
     setSheetOpen(true)
   }
 
-  const handleSave = useCallback(async (data: Omit<Routine, "id">, id?: number) => {
+  function handleSave(data: Omit<Routine, "id">, id?: number) {
     setSheetOpen(false)
-    const routineRepo = container.resolve<RoutineRepository>("routineRepository")
-    if (!routineRepo) return
-    if (id != null) {
-      const existing = routines.find((r) => r.id === id)
-      await routineRepo.update({ ...data, id, sort_order: existing?.sort_order ?? 0 })
-    } else {
-      await routineRepo.create(data)
-    }
-    loadData()
-  }, [loadData, routines])
+    saveMutation.mutate({ data, id })
+  }
 
-  const handleDelete = useCallback(async (id: number) => {
+  function handleDelete(id: number) {
     setSheetOpen(false)
-    const routineRepo = container.resolve<RoutineRepository>("routineRepository")
-    if (!routineRepo) return
-    await routineRepo.delete(id)
-    loadData()
-  }, [loadData])
+    deleteMutation.mutate(id)
+  }
 
-  const handleReorder = useCallback(async (updates: { id: number; sort_order: number }[]) => {
-    const routineRepo = container.resolve<RoutineRepository>("routineRepository")
-    if (!routineRepo) return
-    await routineRepo.updateSortOrders(updates)
-    loadData()
-  }, [loadData])
+  function handleReorder(updates: { id: number; sort_order: number }[]) {
+    reorderMutation.mutate(updates)
+  }
 
   const groups = groupBySlot(routines)
 
@@ -752,7 +757,9 @@ export function RoutinesScreen() {
         onSave={handleSave}
         onDelete={handleDelete}
         onClose={() => setSheetOpen(false)}
-        onCategoriesChanged={loadData}
+        onCategoriesChanged={() =>
+          queryClient.invalidateQueries({ queryKey: expensesKeys.categories() })
+        }
       />
     </View>
   )
