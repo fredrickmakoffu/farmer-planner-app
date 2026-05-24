@@ -4,12 +4,12 @@ import { runMigrations } from "./migrator"
 
 export type Db = SQLite.SQLiteDatabase
 
-export function getDatabase(): Db {
-  return SQLite.openDatabaseSync("tapp.db")
+export async function getDatabase(): Promise<Db> {
+  return SQLite.openDatabaseAsync("tapp.db")
 }
 
-export function initDatabase(): Db {
-  const db = getDatabase()
+export async function initDatabase(): Promise<Db> {
+  const db = await getDatabase()
   runMigrations(db)
   return db
 }
