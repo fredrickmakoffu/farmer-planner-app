@@ -418,7 +418,7 @@ export function TapToLogScreen() {
           </Pressable>
         </View>
 
-        <Text style={$hint}>tap to log · hold to add manually</Text>
+        <Text style={$hint}>tap to log · hold to add</Text>
 
         {lastEvent && <LastEventCard event={lastEvent} category={lastCategory} />}
       </View>
