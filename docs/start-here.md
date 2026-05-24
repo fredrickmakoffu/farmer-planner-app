@@ -86,7 +86,7 @@ Changes are grouped by the branch/PR that shipped them.
 - [x] `@tanstack/react-query` installed
 - [x] shared query client wired via `AppProviders`
 - [x] basic query key factories (`src/shared/query-keys.ts`)
-- [ ] adopt TanStack Query hooks in screens — most screens still use raw `useState` + manual `loadData()` callbacks instead of `useQuery` / `useMutation`; migrating would give automatic cache invalidation, loading states, and background refetch
+- [x] adopt TanStack Query hooks in screens — all five screens migrated from manual `useState`/`loadData` to `useQuery`/`useMutation`; `expensesKeys.prediction()` added (PR #20)
 
 ### Phase 4: Module Scaffolding
 

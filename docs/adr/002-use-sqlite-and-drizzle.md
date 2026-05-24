@@ -28,16 +28,15 @@ Scope:
 - MMKV remains in use only for lightweight preferences and non-secret key-value state
 - Secure Store is used for secrets
 
-Tables expected in the first iterations include:
+Tables in the current schema:
 
-- households
-- members
-- budgets
-- budget_categories
-- transactions
-- notifications_inbox
+- categories
+- routines
+- expense_events
 - outbox
 - sync_checkpoints
+
+Future iterations will add `households`, `members`, `budgets`, `budget_categories`, `notifications_inbox` as those features are built.
 
 ## Consequences
 

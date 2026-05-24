@@ -51,6 +51,10 @@ Operational implications:
 - define per-feature query key factories
 - add testing helpers for QueryClient-backed hooks and screens
 
+## Implementation Note (2026-05-24)
+
+TanStack Query is fully wired. The shared query client lives in `src/bootstrap/query-client.ts` and is mounted in `AppProviders`. Per-feature query key factories are in `src/shared/query-keys.ts`. All five product screens (`TapToLogScreen`, `DailyReviewScreen`, `CategoriesScreen`, `RoutinesScreen`, `FamilyScreen`) have been migrated from manual `useState`/`loadData` callbacks to `useQuery` and `useMutation` (PR #20).
+
 ## Alternatives Considered
 
 ### Zustand for remote state

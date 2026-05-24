@@ -67,6 +67,10 @@ Operational implications:
 - add telemetry for outbox depth, sync duration, and sync failure reasons
 - document conflict rules per aggregate in feature docs or future ADRs
 
+## Implementation Note (2026-05-24)
+
+The contract is partially implemented. `outbox` and `sync_checkpoints` tables exist in the schema. The `SyncEngine` interface is defined in `src/shared/contracts/sync.ts`. A minimal `SqliteSyncEngine` in `src/shared/infrastructure/sqlite-sync-engine.ts` persists outbox rows and supports a best-effort `flush()` for development use only. Production sync (retries, idempotence, HTTP sender, background flush) is not yet built — it is the prerequisite for multi-device and family features.
+
 ## Alternatives Considered
 
 ### Online-only writes with opportunistic caching

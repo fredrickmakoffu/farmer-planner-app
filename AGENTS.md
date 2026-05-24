@@ -35,8 +35,8 @@ Core references:
 | Jest + `@testing-library/react-native` | Unit and component testing            | Active                            |
 | Maestro                                | End-to-end testing                    | Active                            |
 | dependency-cruiser                     | Boundary enforcement                  | Active                            |
-| TanStack Query                         | Server state                          | Approved direction, not yet wired |
-| SQLite + Drizzle                       | Durable local data                    | Approved direction, not yet wired |
+| TanStack Query                         | Server state                          | Active                            |
+| SQLite + custom migration runner       | Durable local data                    | Active                            |
 | Zod + react-hook-form                  | Validation and forms                  | Approved direction, not yet wired |
 
 Critical note:
@@ -203,7 +203,7 @@ Dependency rule: layers depend inward only.
 
 1. Treat server state, durable local data, device preferences, and UI state as separate categories.
 2. MMKV is for preferences and lightweight device state, not relational business data.
-3. When SQLite and Drizzle land, persisted business data must go through repositories and migrations.
+3. Persisted business data must go through repositories and migrations (SQLite with a custom migration runner is active).
 4. All sync-capable writes should be designed so they can evolve into local-first plus outbox behavior.
 5. Parse and validate external data at boundaries. Do not spread raw backend payload shapes through the app.
 

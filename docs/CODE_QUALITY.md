@@ -261,11 +261,9 @@ The feature is not done until:
 
 ## Current Quality Priorities
 
-Right now, the highest-value quality work in this repo is:
+The core product loop is built. Database (SQLite + custom migration runner) and server state (TanStack Query) foundations are active. Current quality work focuses on hardening and correctness:
 
-1. enforce boundaries with dependency-cruiser
-2. keep startup logic moving into bootstrap
-3. establish the database and server-state foundations cleanly
-4. build the first product slice without architectural shortcuts that will have to be undone later
-
-This means quality work is not mainly about polish yet. It is mainly about keeping the repo from drifting away from the chosen architecture while the foundation is still being built.
+1. enforce boundaries with dependency-cruiser in CI (rule config exists, CI gate is pending)
+2. add use-case and repository integration tests — `createExpense`, `updateExpense`, `confirmDay`, `predictCategory` still lack automated coverage
+3. verify iOS widget tap-through end-to-end on a real device
+4. production sync runner — retries, idempotence, HTTP sender; prerequisite for multi-device features

@@ -73,6 +73,10 @@ Operational implications:
 - add test helpers that can substitute the container or inject fake providers
 - keep feature entry points small and prevent direct construction of infrastructure classes in presentation code
 
+## Implementation Note (2026-05-24)
+
+The composition-root approach is fully implemented. `src/bootstrap/` contains: `app-bootstrap.ts` (startup sequencing), `container.ts` (singleton DI container), `register-infrastructure.ts` (wires SQLite repos into the container), `query-client.ts` (shared QueryClient), `AppProviders.tsx` (mounts all providers), `migration-runner.ts` (invokes `runMigrations` at startup), and `notifications.ts` (registers notification handlers). The root `_layout.tsx` stays thin and delegates to `AppProviders`.
+
 ## Alternatives Considered
 
 ### Direct imports and module singletons everywhere

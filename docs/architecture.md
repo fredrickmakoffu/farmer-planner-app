@@ -68,65 +68,63 @@ This gives strong boundaries without forcing overly abstract code everywhere.
 
 ## Target Folder Structure
 
+The structure below reflects the current implementation. Future modules (`households`, `notifications`, `auth`) will follow the same pattern as `expenses`.
+
 ```text
 src/
   app/                              # Expo Router route files only
     _layout.tsx
-    (authenticated)/
-    (public)/
+    index.tsx
+    onboarding.tsx
+    categories.tsx
+    routines.tsx
+    settings.tsx
+    (tabs)/
+      _layout.tsx
+      index.tsx
+      review.tsx
+      family.tsx
+    expenses/
+      index.tsx
+      tap.tsx
+      review.tsx
+      categories.tsx
   modules/
-    budgeting/
+    expenses/                       # active feature module
       domain/
         entities/
-        value-objects/
         repositories/
-        services/
-      application/
-        use-cases/
-        queries/
-        commands/
-        dto/
+      application/                  # use cases
       infrastructure/
-        api/
-        db/
-        mappers/
-        repositories/
+        sqlite/                     # SQLite repository implementations
       presentation/
         screens/
         components/
         hooks/
-        view-models/
       index.ts
-    households/
-    notifications/
-    auth/
   shared/
-    domain/
-    application/
+    contracts/                      # ports: api, database, sync, telemetry
     infrastructure/
-      api/
       database/
-      background/
-      notifications/
-      telemetry/
-    presentation/
-      components/
-      hooks/
-      navigation/
-      theme/
-    config/
-    utils/
+        migrations/
+        migrator.ts
+        migrations.ts
+        index.ts
+    query-keys.ts
   bootstrap/
     app-bootstrap.ts
+    AppProviders.tsx
     container.ts
     query-client.ts
-    store.ts
+    register-infrastructure.ts
+    migration-runner.ts
+    notifications.ts
 ```
 
 Keep Expo Router route files very thin. Each route should only bind URL parameters, auth guards, and a feature screen:
 
 ```tsx
-export { BudgetOverviewScreen as default } from "@/modules/budgeting/presentation/screens/BudgetOverviewScreen"
+export { TapToLogScreen as default } from "@/modules/expenses/presentation"
 ```
 
 This prevents routing concerns from becoming the application architecture.

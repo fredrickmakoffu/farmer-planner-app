@@ -29,7 +29,7 @@ Key docs (read before making architectural decisions):
 | Navigation | Expo Router (route files in `src/app` only) |
 | UI components | Ignite Red (`Screen`, `Text`, `Button`, `TextField`, `Header`, `Card`) |
 | Styling | Ignite themed style functions, `$`-prefixed style vars, no `StyleSheet.create` |
-| Local data | expo-sqlite + Drizzle (migrations in `drizzle/`) |
+| Local data | expo-sqlite + custom migration runner (migrations in `src/shared/infrastructure/database/migrations/`) |
 | Server state | TanStack Query (client in `src/bootstrap/query-client.ts`) |
 | DI / bootstrap | `src/bootstrap/container.ts` — register and resolve infra via `container` |
 | Fonts | SpaceGrotesk (body), SpaceMono (mono amounts) — loaded in `AppProviders` |
@@ -116,13 +116,18 @@ modules/
 ## Active implementation phase
 
 See [docs/start-here.md](docs/start-here.md) for the full task list.
-Current focus: **design implementation** — translating the Tapp design system into the React Native screens.
+Current focus: **product hardening** — the core product loop (tap → review → confirm) is fully built. Active work is test coverage, widget verification, and the production sync runner.
 
-Branches planned (in order):
+**What's built:**
+- All five core screens: `TapToLogScreen`, `DailyReviewScreen`, `CategoriesScreen`, `RoutinesScreen`, `FamilyScreen`
+- Onboarding, settings, routine CRUD, drag-to-reorder, category CRUD
+- `EditExpenseSheet` (amount, category, notes, delete), `ConfirmDaySheet`, `PickRoutineSheet`
+- SQLite + custom migration runner (5 migrations, sequential `_migrations`-table runner)
+- TanStack Query wired to all screens (PR #20)
+- Android and iOS home-screen widgets (`modules/tapp-widget/`)
 
-1. `feat/design-tokens` — Tapp color tokens + typography in theme
-2. `feat/bottom-nav` — proper bottom navigation (Tap · Review · Family)
-3. `feat/tap-screen` — coral tap button, hero amount, predicted pill
-4. `feat/review-screen` — daily review with event cards, shadow rows
-5. `feat/categories-screen` — categories with color picker
-6. `feat/family-screen` — family view (member rows, category heat bars)
+**What remains (prioritised):**
+1. iOS widget tap-through verification on real device
+2. Use-case and repository integration tests
+3. Dependency-cruiser CI gate
+4. Production sync runner (prerequisite for multi-device / family features)
