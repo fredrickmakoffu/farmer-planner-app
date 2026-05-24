@@ -8,10 +8,11 @@ export async function createExpense(
   amount: number,
   categoryId?: number | null,
   syncEngine?: SyncEngine,
+  notes?: string | null,
 ): Promise<ExpenseEvent> {
   if (!Number.isFinite(amount) || amount <= 0) throw new Error("Invalid amount")
 
-  const created = await repo.create(amount, categoryId)
+  const created = await repo.create(amount, categoryId, notes)
 
   try {
     if (syncEngine) {

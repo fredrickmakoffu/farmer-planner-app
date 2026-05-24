@@ -12,17 +12,18 @@ export class SqliteExpenseEventRepository implements ExpenseEventRepository {
     if (!this.db) throw new Error("Database not available in container")
   }
 
-  create(amount: number, categoryId?: number | null): Promise<ExpenseEvent> {
+  create(amount: number, categoryId?: number | null, notes?: string | null): Promise<ExpenseEvent> {
     const createdAt = Date.now()
     const result = this.db.runSync(
-      `INSERT INTO expense_events (amount, category_id, created_at) VALUES (?, ?, ?);`,
-      [amount, categoryId ?? null, createdAt],
+      `INSERT INTO expense_events (amount, category_id, created_at, notes) VALUES (?, ?, ?, ?);`,
+      [amount, categoryId ?? null, createdAt, notes ?? null],
     )
     return Promise.resolve({
       id: result.lastInsertRowId,
       amount,
       category_id: categoryId ?? null,
       created_at: createdAt,
+      notes: notes ?? null,
     })
   }
 

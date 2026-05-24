@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Animated, Pressable, View, ViewStyle, TextStyle } from "react-native"
 import { LinearGradient } from "expo-linear-gradient"
 import { useFocusEffect, useRouter } from "expo-router"
@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context"
 
 import { container } from "@/bootstrap/container"
 import { Text } from "@/components/Text"
+import { createCategory } from "@/modules/expenses/application/create-category"
 import { createExpense } from "@/modules/expenses/application/create-expense"
 import { predictCategory } from "@/modules/expenses/application/predict-category"
 import type { Category } from "@/modules/expenses/domain/entities/category"
@@ -35,10 +36,10 @@ import {
   spacing,
   radii,
   elevation,
-  duration,
 } from "@/theme/tapp-tokens"
 import { typography } from "@/theme/typography"
 
+import { AddExpenseSheet } from "./tap/AddExpenseSheet"
 import { PickRoutineSheet } from "./tap/PickRoutineSheet"
 
 // Map lowercase category names to design-system palette colors
@@ -139,6 +140,14 @@ export function TapToLogScreen() {
   const router = useRouter()
   const scaleAnim = useRef(new Animated.Value(1)).current
 
+  // Hold animation values
+  const holdRingScale = useRef(new Animated.Value(1)).current
+  const holdRingOpacity = useRef(new Animated.Value(0)).current
+  const pingScale = useRef(new Animated.Value(1)).current
+  const pingOpacity = useRef(new Animated.Value(0)).current
+  const holdAnim = useRef<Animated.CompositeAnimation | null>(null)
+  const longPressFired = useRef(false)
+
   const queryClient = useQueryClient()
 
   useFocusEffect(
@@ -149,6 +158,7 @@ export function TapToLogScreen() {
   )
 
   const [pickSheetOpen, setPickSheetOpen] = useState(false)
+  const [addSheetOpen, setAddSheetOpen] = useState(false)
   const [nowMinutes, setNowMinutes] = useState(() => {
     const now = new Date()
     return now.getHours() * 60 + now.getMinutes()
@@ -222,10 +232,18 @@ export function TapToLogScreen() {
     ])
 
   const createExpenseMutation = useMutation({
-    mutationFn: ({ amount, categoryId }: { amount: number; categoryId?: number | null }) => {
+    mutationFn: ({
+      amount,
+      categoryId,
+      notes,
+    }: {
+      amount: number
+      categoryId?: number | null
+      notes?: string | null
+    }) => {
       const expenseRepo = container.resolve<ExpenseEventRepository>("expenseEventRepository")!
       const sync = container.resolve<any>("syncEngine")
-      return createExpense(expenseRepo, amount, categoryId, sync)
+      return createExpense(expenseRepo, amount, categoryId, sync, notes)
     },
     onSuccess: invalidateAfterTap,
   })
@@ -246,16 +264,79 @@ export function TapToLogScreen() {
       ]),
   })
 
-  function animatePress(toValue: number, cb?: () => void) {
-    Animated.timing(scaleAnim, {
-      toValue,
-      duration: duration.fast,
+  const createCategoryMutation = useMutation({
+    mutationFn: ({ name, colorHex, icon }: { name: string; colorHex: string; icon: string }) => {
+      const repo = container.resolve<CategoryRepository>("categoryRepository")!
+      return createCategory(repo, name, colorHex, icon)
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: expensesKeys.categories() }),
+  })
+
+  // When the add sheet opens, release the held-down button
+  useEffect(() => {
+    if (!addSheetOpen) return
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      friction: 8,
+      tension: 80,
       useNativeDriver: true,
-    }).start(cb)
+    }).start()
+    Animated.parallel([
+      Animated.timing(holdRingScale, { toValue: 1.5, duration: 280, useNativeDriver: true }),
+      Animated.timing(holdRingOpacity, { toValue: 0, duration: 280, useNativeDriver: true }),
+    ]).start()
+  }, [addSheetOpen, scaleAnim, holdRingScale, holdRingOpacity])
+
+  function resetHoldAnims() {
+    holdAnim.current?.stop()
+    Animated.parallel([
+      Animated.spring(scaleAnim, { toValue: 1, friction: 8, tension: 90, useNativeDriver: true }),
+      Animated.timing(holdRingOpacity, { toValue: 0, duration: 180, useNativeDriver: true }),
+      Animated.timing(holdRingScale, { toValue: 1, duration: 180, useNativeDriver: true }),
+    ]).start()
+  }
+
+  function handlePressIn() {
+    longPressFired.current = false
+    holdAnim.current?.stop()
+
+    // Instant ping ripple
+    pingScale.setValue(1)
+    pingOpacity.setValue(0.35)
+    Animated.parallel([
+      Animated.timing(pingScale, { toValue: 1.45, duration: 300, useNativeDriver: true }),
+      Animated.timing(pingOpacity, { toValue: 0, duration: 300, useNativeDriver: true }),
+    ]).start()
+
+    // Quick initial depress so taps feel responsive, then slow compression for hold
+    holdRingScale.setValue(1)
+    holdRingOpacity.setValue(0)
+    holdAnim.current = Animated.parallel([
+      Animated.sequence([
+        Animated.timing(scaleAnim, { toValue: 0.93, duration: 80, useNativeDriver: true }),
+        Animated.timing(scaleAnim, { toValue: 0.86, duration: 340, useNativeDriver: true }),
+      ]),
+      Animated.timing(holdRingOpacity, { toValue: 0.4, duration: 160, useNativeDriver: true }),
+      Animated.timing(holdRingScale, { toValue: 1.22, duration: 420, useNativeDriver: true }),
+    ])
+    holdAnim.current.start()
+  }
+
+  function handlePressOut() {
+    if (!longPressFired.current) resetHoldAnims()
+  }
+
+  function handleLongPress() {
+    longPressFired.current = true
+    holdAnim.current?.stop()
+    setAddSheetOpen(true)
+  }
+
+  function handleAdd(amount: number, categoryId: number | null, notes: string | null) {
+    createExpenseMutation.mutate({ amount, categoryId, notes })
   }
 
   function handleTap() {
-    animatePress(0.92, () => animatePress(1))
     if (predictionResult?.source === "routine" && (predictionResult.defaultAmount ?? 0) > 0) {
       createExpenseMutation.mutate({
         amount: predictionResult.defaultAmount,
@@ -305,24 +386,39 @@ export function TapToLogScreen() {
           source={prediction.source}
         />
 
-        <Pressable
-          onPress={handleTap}
-          accessibilityLabel="Tap to log expense"
-          accessibilityRole="button"
-        >
-          <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
-            <LinearGradient
-              colors={["#E8956A", coral500, coral600]}
-              start={{ x: 0.32, y: 0.3 }}
-              end={{ x: 0.8, y: 0.9 }}
-              style={[$tapButton, elevation.tapButton]}
-            >
-              <MaterialCommunityIcons name="gesture-tap" size={80} color="white" />
-            </LinearGradient>
-          </Animated.View>
-        </Pressable>
+        <View style={$tapButtonWrapper}>
+          {/* Ping ripple — fires instantly on press */}
+          <Animated.View
+            style={[$holdRing, { opacity: pingOpacity, transform: [{ scale: pingScale }] }]}
+          />
+          {/* Hold ring — expands during the hold, explodes on trigger */}
+          <Animated.View
+            style={[$holdRing, { opacity: holdRingOpacity, transform: [{ scale: holdRingScale }] }]}
+          />
 
-        <Text style={$hint}>tap to log · hold for note</Text>
+          <Pressable
+            onPress={handleTap}
+            onPressIn={handlePressIn}
+            onPressOut={handlePressOut}
+            onLongPress={handleLongPress}
+            delayLongPress={400}
+            accessibilityLabel="Tap to log expense, hold to add manually"
+            accessibilityRole="button"
+          >
+            <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+              <LinearGradient
+                colors={["#E8956A", coral500, coral600]}
+                start={{ x: 0.32, y: 0.3 }}
+                end={{ x: 0.8, y: 0.9 }}
+                style={[$tapButton, elevation.tapButton]}
+              >
+                <MaterialCommunityIcons name="gesture-tap" size={80} color="white" />
+              </LinearGradient>
+            </Animated.View>
+          </Pressable>
+        </View>
+
+        <Text style={$hint}>tap to log · hold to add manually</Text>
 
         {lastEvent && <LastEventCard event={lastEvent} category={lastCategory} />}
       </View>
@@ -335,6 +431,16 @@ export function TapToLogScreen() {
         onLog={handleLog}
         onSaveRoutineAndLog={handleSaveRoutineAndLog}
         onClose={() => setPickSheetOpen(false)}
+      />
+
+      <AddExpenseSheet
+        visible={addSheetOpen}
+        categories={allCategories}
+        onClose={() => setAddSheetOpen(false)}
+        onAdd={handleAdd}
+        onCreateCategory={(name, colorHex, icon) =>
+          createCategoryMutation.mutateAsync({ name, colorHex, icon })
+        }
       />
     </View>
   )
@@ -397,12 +503,28 @@ const $body: ViewStyle = {
   paddingBottom: 88,
 }
 
+const $tapButtonWrapper: ViewStyle = {
+  width: 200,
+  height: 200,
+  alignItems: "center",
+  justifyContent: "center",
+}
+
 const $tapButton: ViewStyle = {
   width: 200,
   height: 200,
   borderRadius: 100,
   alignItems: "center",
   justifyContent: "center",
+}
+
+const $holdRing: ViewStyle = {
+  position: "absolute",
+  width: 200,
+  height: 200,
+  borderRadius: 100,
+  borderWidth: 1.5,
+  borderColor: coral500,
 }
 
 const $hint: TextStyle = {
