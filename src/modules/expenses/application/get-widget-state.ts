@@ -10,6 +10,8 @@ export type WidgetState = {
   categoryName: string
   /** Hex color to tint the widget button. */
   colorHex: string
+  /** MaterialCommunityIcons icon name, e.g. "silverware-fork-knife". */
+  icon: string
   /** Pre-filled amount shown on widget, 0 when no default is set. */
   defaultAmount: number
   /** Unix ms timestamp when this state was computed. */
@@ -35,6 +37,7 @@ export async function getWidgetState(
         categoryId,
         categoryName: category.name,
         colorHex: category.color_hex ?? FALLBACK_COLOR,
+        icon: category.icon,
         defaultAmount: category.default_amount ?? 0,
         predictedAt,
       }
@@ -44,8 +47,9 @@ export async function getWidgetState(
   // No categories at all — return a neutral placeholder
   return {
     categoryId: null,
-    categoryName: "Expense",
+    categoryName: "Tap",
     colorHex: FALLBACK_COLOR,
+    icon: "hand-pointing-up",
     defaultAmount: 0,
     predictedAt,
   }

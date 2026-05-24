@@ -15,6 +15,8 @@ export type Routine = {
   is_high_confidence: boolean
   /** Default expense amount in KSh for this routine window (0 = not set). */
   default_amount: number
+  /** Display order within the same time slot group (0 = first to be predicted). */
+  sort_order?: number
 }
 
 export default Routine

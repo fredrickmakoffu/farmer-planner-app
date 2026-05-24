@@ -28,29 +28,38 @@ export class SqliteExpenseEventRepository implements ExpenseEventRepository {
 
   findAll(): Promise<ExpenseEvent[]> {
     const rows = this.db.getAllSync(
-      `SELECT id, amount, category_id, created_at FROM expense_events ORDER BY created_at DESC;`,
+      `SELECT id, amount, category_id, created_at, confirmed_at, notes FROM expense_events ORDER BY created_at DESC;`,
     ) as ExpenseEvent[]
     return Promise.resolve(rows)
   }
 
   findById(id: number): Promise<ExpenseEvent | undefined> {
     const row = this.db.getFirstSync(
-      `SELECT id, amount, category_id, created_at FROM expense_events WHERE id = ? LIMIT 1;`,
+      `SELECT id, amount, category_id, created_at, confirmed_at, notes FROM expense_events WHERE id = ? LIMIT 1;`,
       [id],
     ) as ExpenseEvent | null
     return Promise.resolve(row ?? undefined)
   }
 
-  update(id: number, amount: number, categoryId: number | null): Promise<void> {
+  update(id: number, amount: number, categoryId: number | null, notes?: string | null): Promise<void> {
     this.db.runSync(
-      `UPDATE expense_events SET amount = ?, category_id = ? WHERE id = ?;`,
-      [amount, categoryId, id],
+      `UPDATE expense_events SET amount = ?, category_id = ?, notes = ? WHERE id = ?;`,
+      [amount, categoryId, notes ?? null, id],
     )
     return Promise.resolve()
   }
 
   delete(id: number): Promise<void> {
     this.db.runSync(`DELETE FROM expense_events WHERE id = ?;`, [id])
+    return Promise.resolve()
+  }
+
+  confirmDay(dateStart: number, dateEnd: number): Promise<void> {
+    const confirmedAt = Date.now()
+    this.db.runSync(
+      `UPDATE expense_events SET confirmed_at = ? WHERE created_at >= ? AND created_at <= ? AND confirmed_at IS NULL;`,
+      [confirmedAt, dateStart, dateEnd],
+    )
     return Promise.resolve()
   }
 }

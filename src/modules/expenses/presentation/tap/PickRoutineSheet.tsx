@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import {
   KeyboardAvoidingView,
   Modal,
@@ -212,6 +212,13 @@ function AddForm({ categories, nowMinutes, onSave, onCategoryCreated, onBack }: 
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(
     categories.length ? (categories[0].id ?? null) : null,
   )
+
+  // Auto-select first category once categories load (in case they weren't ready on mount)
+  useEffect(() => {
+    if (selectedCategoryId == null && categories.length > 0) {
+      setSelectedCategoryId(categories[0].id ?? null)
+    }
+  }, [categories])
   const [amount, setAmount] = useState("")
   const [selectedSlot, setSelectedSlot] = useState(closestSlotIndex(nowMinutes))
   const [days, setDays] = useState<127 | 62 | 65>(127)
@@ -233,6 +240,8 @@ function AddForm({ categories, nowMinutes, onSave, onCategoryCreated, onBack }: 
       setNewCatOpen(false)
       setNewCatName("")
       onCategoryCreated(created)
+    } catch (err) {
+      console.error("handleNewCatSave: failed to create category", err)
     } finally {
       setNewCatSaving(false)
     }
@@ -410,8 +419,8 @@ export function PickRoutineSheet({
   const [mode, setMode] = useState<"pick" | "add">("pick")
   const [localCategories, setLocalCategories] = useState<Category[]>(categories)
 
-  // Keep localCategories in sync when categories prop changes (sheet reopens)
-  useState(() => { setLocalCategories(categories) })
+  // Keep localCategories in sync when the parent reloads categories (async data arrives)
+  useEffect(() => { setLocalCategories(categories) }, [categories])
 
   const categoryMap = new Map(categories.map((c) => [c.id, c]))
 

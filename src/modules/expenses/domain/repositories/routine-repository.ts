@@ -6,6 +6,7 @@ export interface RoutineRepository {
   findById(id: number): Promise<Routine | undefined>
   update(routine: Routine): Promise<void>
   delete(id: number): Promise<void>
+  updateSortOrders(updates: { id: number; sort_order: number }[]): Promise<void>
 }
 
 export default RoutineRepository

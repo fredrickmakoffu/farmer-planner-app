@@ -5,19 +5,14 @@ import SqliteRoutineRepository from "@/modules/expenses/infrastructure/sqlite/ro
 import { container } from "./container"
 
 export function registerInfrastructure(db: any) {
-  try {
-    const categoryRepo = new SqliteCategoryRepository(db)
-    container.register("categoryRepository", categoryRepo)
+  const categoryRepo = new SqliteCategoryRepository(db)
+  container.register("categoryRepository", categoryRepo)
 
-    const routineRepo = new SqliteRoutineRepository(db)
-    container.register("routineRepository", routineRepo)
+  const routineRepo = new SqliteRoutineRepository(db)
+  container.register("routineRepository", routineRepo)
 
-    const expenseEventRepo = new SqliteExpenseEventRepository(db)
-    container.register("expenseEventRepository", expenseEventRepo)
-  } catch {
-    // Ignore registration errors in early development; container may already have entries
-    // Errors will be surfaced when the app attempts to resolve dependencies.
-  }
+  const expenseEventRepo = new SqliteExpenseEventRepository(db)
+  container.register("expenseEventRepository", expenseEventRepo)
 }
 
 export default registerInfrastructure

@@ -14,10 +14,11 @@ function rowToRoutine(row: any): Routine {
     days_of_week: row.days_of_week,
     is_high_confidence: row.is_high_confidence === 1,
     default_amount: row.default_amount ?? 0,
+    sort_order: row.sort_order ?? 0,
   }
 }
 
-const COLUMNS = "id, name, category_id, time_start, time_end, days_of_week, is_high_confidence, default_amount"
+const COLUMNS = "id, name, category_id, time_start, time_end, days_of_week, is_high_confidence, default_amount, sort_order"
 
 export class SqliteRoutineRepository implements RoutineRepository {
   private db: Db
@@ -28,9 +29,15 @@ export class SqliteRoutineRepository implements RoutineRepository {
   }
 
   create(routine: Omit<Routine, "id">): Promise<Routine> {
+    const maxRow = this.db.getFirstSync(
+      `SELECT COALESCE(MAX(sort_order), -1) AS max_so FROM routines WHERE time_start = ? AND time_end = ?;`,
+      [routine.time_start, routine.time_end],
+    ) as any
+    const sortOrder = (maxRow?.max_so ?? -1) + 1
+
     const result = this.db.runSync(
-      `INSERT INTO routines (name, category_id, time_start, time_end, days_of_week, is_high_confidence, default_amount)
-       VALUES (?, ?, ?, ?, ?, ?, ?);`,
+      `INSERT INTO routines (name, category_id, time_start, time_end, days_of_week, is_high_confidence, default_amount, sort_order)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
       [
         routine.name,
         routine.category_id,
@@ -39,13 +46,16 @@ export class SqliteRoutineRepository implements RoutineRepository {
         routine.days_of_week,
         routine.is_high_confidence ? 1 : 0,
         routine.default_amount ?? 0,
+        sortOrder,
       ],
     )
-    return Promise.resolve({ ...routine, id: result.lastInsertRowId })
+    return Promise.resolve({ ...routine, id: result.lastInsertRowId, sort_order: sortOrder })
   }
 
   findAll(): Promise<Routine[]> {
-    const rows = this.db.getAllSync(`SELECT ${COLUMNS} FROM routines;`) as any[]
+    const rows = this.db.getAllSync(
+      `SELECT ${COLUMNS} FROM routines ORDER BY time_start ASC, sort_order ASC;`,
+    ) as any[]
     return Promise.resolve(rows.map(rowToRoutine))
   }
 
@@ -61,7 +71,7 @@ export class SqliteRoutineRepository implements RoutineRepository {
     this.db.runSync(
       `UPDATE routines
        SET name = ?, category_id = ?, time_start = ?, time_end = ?,
-           days_of_week = ?, is_high_confidence = ?, default_amount = ?
+           days_of_week = ?, is_high_confidence = ?, default_amount = ?, sort_order = ?
        WHERE id = ?;`,
       [
         routine.name,
@@ -71,6 +81,7 @@ export class SqliteRoutineRepository implements RoutineRepository {
         routine.days_of_week,
         routine.is_high_confidence ? 1 : 0,
         routine.default_amount ?? 0,
+        routine.sort_order ?? 0,
         routine.id!,
       ],
     )
@@ -79,6 +90,15 @@ export class SqliteRoutineRepository implements RoutineRepository {
 
   delete(id: number): Promise<void> {
     this.db.runSync(`DELETE FROM routines WHERE id = ?;`, [id])
+    return Promise.resolve()
+  }
+
+  updateSortOrders(updates: { id: number; sort_order: number }[]): Promise<void> {
+    this.db.withTransactionSync(() => {
+      for (const { id, sort_order } of updates) {
+        this.db.runSync(`UPDATE routines SET sort_order = ? WHERE id = ?;`, [sort_order, id])
+      }
+    })
     return Promise.resolve()
   }
 }

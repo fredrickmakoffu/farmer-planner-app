@@ -3,6 +3,7 @@ import {
   Animated,
   KeyboardAvoidingView,
   Modal,
+  PanResponder,
   Platform,
   Pressable,
   ScrollView,
@@ -72,6 +73,32 @@ const TIME_SLOTS = [
   { label: "Evening",       start: 1020, end: 1200 },
   { label: "Night",         start: 1200, end: 1380 },
 ]
+
+type SlotDef = typeof TIME_SLOTS[number]
+
+// Group routines by time slot, preserving sort_order within each group.
+// Routines with no matching predefined slot are collected into an "Other" group.
+function groupBySlot(routines: Routine[]): { slot: SlotDef | null; label: string; items: Routine[] }[] {
+  const result: { slot: SlotDef | null; label: string; items: Routine[] }[] = []
+  const used = new Set<number>()
+
+  for (const slot of TIME_SLOTS) {
+    const items = routines
+      .filter((r) => r.time_start === slot.start && r.time_end === slot.end)
+      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+    if (items.length > 0) {
+      result.push({ slot, label: slot.label, items })
+      items.forEach((r) => used.add(r.id!))
+    }
+  }
+
+  const other = routines.filter((r) => r.id != null && !used.has(r.id!))
+  if (other.length > 0) {
+    result.push({ slot: null, label: "Other", items: other })
+  }
+
+  return result
+}
 
 // ---- Edit / Add sheet -------------------------------------------------------
 
@@ -340,41 +367,230 @@ function EditRoutineSheet({ visible, mode, routine, categories, onSave, onDelete
   )
 }
 
-// ---- Routine row -----------------------------------------------------------
+// ---- Draggable routine row -------------------------------------------------
+
+const ROW_HEIGHT_ESTIMATE = 66 // used for swap threshold calculation
+
+type DragCallbacks = {
+  onDragStart: (routineId: number, index: number) => void
+  onDragMove: (dy: number) => void
+  onDragEnd: () => void
+}
 
 type RoutineRowProps = {
   routine: Routine
   category: Category | undefined
+  index: number
   isFirst: boolean
+  showDragHandle: boolean
+  showOrderBadge: boolean
+  isDragging: boolean
+  dragAnim: Animated.Value
+  dragCallbacks: DragCallbacks
   onPress: (routine: Routine) => void
 }
 
-function RoutineRow({ routine, category, isFirst, onPress }: RoutineRowProps) {
+function RoutineRow({
+  routine, category, index, isFirst, showDragHandle, showOrderBadge,
+  isDragging, dragAnim, dragCallbacks, onPress,
+}: RoutineRowProps) {
   const color = category?.color_hex ?? catStone
+
+  const callbacksRef = useRef(dragCallbacks)
+  callbacksRef.current = dragCallbacks
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => {
+        callbacksRef.current.onDragStart(routine.id!, index)
+      },
+      onPanResponderMove: (_, gs) => callbacksRef.current.onDragMove(gs.dy),
+      onPanResponderRelease: () => callbacksRef.current.onDragEnd(),
+      onPanResponderTerminate: () => callbacksRef.current.onDragEnd(),
+    }),
+  ).current
+
   return (
-    <Pressable
-      onPress={() => onPress(routine)}
-      style={({ pressed }) => [$row, !isFirst && $rowBorder, pressed && $rowPressed]}
+    <Animated.View
+      style={[
+        $rowOuter,
+        !isFirst && $rowBorder,
+        isDragging && $rowDragging,
+        isDragging && { transform: [{ translateY: dragAnim }], zIndex: 10 },
+      ]}
     >
-      <View style={[$colorBar, { backgroundColor: color }]} />
-      <View style={$rowContent}>
-        <View style={$rowTop}>
-          <Text style={$routineName}>{routine.name}</Text>
-          <Text style={$routineAmount}>
-            {routine.default_amount > 0
-              ? `KSh ${formatAmount(routine.default_amount)}`
-              : "—"}
-          </Text>
+      <Pressable
+        onPress={() => !isDragging && onPress(routine)}
+        style={({ pressed }) => [$rowInner, pressed && !isDragging && $rowPressed]}
+      >
+        <View style={[$colorBar, { backgroundColor: color }]} />
+        <View style={$rowContent}>
+          <View style={$rowTop}>
+            <View style={$routineNameRow}>
+              {showOrderBadge && (
+                <View style={$orderBadge}>
+                  <Text style={$orderBadgeText}>{index + 1}</Text>
+                </View>
+              )}
+              <Text style={$routineName}>{routine.name}</Text>
+            </View>
+            <Text style={$routineAmount}>
+              {routine.default_amount > 0
+                ? `KSh ${formatAmount(routine.default_amount)}`
+                : "—"}
+            </Text>
+          </View>
+          <View style={$rowBottom}>
+            <Text style={$routineMeta}>
+              {category?.name ?? "Unknown"} · {daysLabel(routine.days_of_week)}
+            </Text>
+          </View>
         </View>
-        <View style={$rowBottom}>
-          <Text style={$routineMeta}>
-            {category?.name ?? "Unknown"} · {slotLabel(routine.time_start, routine.time_end)}
-          </Text>
-          <Text style={$routineDays}>{daysLabel(routine.days_of_week)}</Text>
+      </Pressable>
+
+      {showDragHandle ? (
+        <View {...panResponder.panHandlers} style={$dragHandleWrap} hitSlop={8}>
+          <Ionicons name="reorder-three-outline" size={22} color={isDragging ? coral500 : ink4} />
         </View>
+      ) : (
+        <Pressable onPress={() => onPress(routine)} style={$chevronWrap} hitSlop={8}>
+          <Ionicons name="chevron-forward" size={16} color={ink4} />
+        </Pressable>
+      )}
+    </Animated.View>
+  )
+}
+
+// ---- Draggable group -------------------------------------------------------
+
+type DraggableGroupProps = {
+  slot: SlotDef | null
+  label: string
+  items: Routine[]
+  categoryMap: Map<number, Category>
+  onEdit: (routine: Routine) => void
+  onReorder: (updates: { id: number; sort_order: number }[]) => void
+  setScrollEnabled: (enabled: boolean) => void
+}
+
+function DraggableRoutineGroup({
+  slot, label, items, categoryMap, onEdit, onReorder, setScrollEnabled,
+}: DraggableGroupProps) {
+  const [order, setOrder] = useState<Routine[]>(items)
+  const orderRef = useRef<Routine[]>(items)
+
+  const draggingIdRef = useRef<number | null>(null)
+  const draggingIndexRef = useRef(-1)
+  const effectiveDyBaseRef = useRef(0)
+  const dragAnim = useRef(new Animated.Value(0)).current
+
+  // Sync prop changes (from parent reload after save/delete)
+  useEffect(() => {
+    setOrder(items)
+    orderRef.current = items
+  }, [items])
+
+  function onDragStart(routineId: number, index: number) {
+    draggingIdRef.current = routineId
+    draggingIndexRef.current = index
+    effectiveDyBaseRef.current = 0
+    setScrollEnabled(false)
+  }
+
+  function onDragMove(dy: number) {
+    if (draggingIdRef.current === null) return
+
+    const visualDy = dy - effectiveDyBaseRef.current
+    dragAnim.setValue(visualDy)
+
+    const ci = draggingIndexRef.current
+    const len = orderRef.current.length
+
+    if (visualDy > ROW_HEIGHT_ESTIMATE / 2 && ci < len - 1) {
+      // Swap with item below
+      const nextOrder = [...orderRef.current]
+      ;[nextOrder[ci], nextOrder[ci + 1]] = [nextOrder[ci + 1], nextOrder[ci]]
+      orderRef.current = nextOrder
+      draggingIndexRef.current = ci + 1
+      effectiveDyBaseRef.current += ROW_HEIGHT_ESTIMATE
+      dragAnim.setValue(dy - effectiveDyBaseRef.current)
+      setOrder(nextOrder)
+    } else if (visualDy < -ROW_HEIGHT_ESTIMATE / 2 && ci > 0) {
+      // Swap with item above
+      const nextOrder = [...orderRef.current]
+      ;[nextOrder[ci], nextOrder[ci - 1]] = [nextOrder[ci - 1], nextOrder[ci]]
+      orderRef.current = nextOrder
+      draggingIndexRef.current = ci - 1
+      effectiveDyBaseRef.current -= ROW_HEIGHT_ESTIMATE
+      dragAnim.setValue(dy - effectiveDyBaseRef.current)
+      setOrder(nextOrder)
+    }
+  }
+
+  function onDragEnd() {
+    const finalOrder = orderRef.current
+    draggingIdRef.current = null
+    draggingIndexRef.current = -1
+    effectiveDyBaseRef.current = 0
+    dragAnim.setValue(0)
+    setScrollEnabled(true)
+    onReorder(finalOrder.map((r, i) => ({ id: r.id!, sort_order: i })))
+  }
+
+  const showDragHandle = order.length > 1
+  const [draggingId, setDraggingId] = useState<number | null>(null)
+
+  // Keep draggingId state in sync with ref (for visual feedback)
+  const wrappedOnDragStart = useCallback((routineId: number, index: number) => {
+    setDraggingId(routineId)
+    onDragStart(routineId, index)
+  }, [])
+
+  const wrappedOnDragEnd = useCallback(() => {
+    setDraggingId(null)
+    onDragEnd()
+  }, [])
+
+  const callbacks: DragCallbacks = {
+    onDragStart: wrappedOnDragStart,
+    onDragMove,
+    onDragEnd: wrappedOnDragEnd,
+  }
+
+  return (
+    <View style={$groupSection}>
+      {/* Slot header */}
+      <View style={$slotHeaderRow}>
+        <Text style={$slotHeaderLabel}>{label}</Text>
+        {slot && (
+          <Text style={$slotHeaderTime}>{slotLabel(slot.start, slot.end)}</Text>
+        )}
+        {showDragHandle && (
+          <Text style={$slotHint}>drag to reorder</Text>
+        )}
       </View>
-      <Ionicons name="chevron-forward" size={16} color={ink4} />
-    </Pressable>
+
+      {/* Routines card */}
+      <View style={$groupCard}>
+        {order.map((routine, index) => (
+          <RoutineRow
+            key={String(routine.id)}
+            routine={routine}
+            category={routine.category_id != null ? categoryMap.get(routine.category_id) : undefined}
+            index={index}
+            isFirst={index === 0}
+            showDragHandle={showDragHandle}
+            showOrderBadge={showDragHandle}
+            isDragging={draggingId === routine.id}
+            dragAnim={dragAnim}
+            dragCallbacks={callbacks}
+            onPress={onEdit}
+          />
+        ))}
+      </View>
+    </View>
   )
 }
 
@@ -411,6 +627,7 @@ export function RoutinesScreen() {
   const [editingRoutine, setEditingRoutine] = useState<Routine | null>(null)
   const [sheetMode, setSheetMode] = useState<"edit" | "add">("add")
   const [sheetOpen, setSheetOpen] = useState(false)
+  const [scrollEnabled, setScrollEnabled] = useState(true)
 
   const loadData = useCallback(async () => {
     const routineRepo = container.resolve<RoutineRepository>("routineRepository")
@@ -427,7 +644,7 @@ export function RoutinesScreen() {
       if (cat.id != null) map.set(cat.id, cat)
     }
 
-    setRoutines(allRoutines.sort((a, b) => a.time_start - b.time_start))
+    setRoutines(allRoutines)
     setCategories(allCategories)
     setCategoryMap(map)
     setLoading(false)
@@ -452,12 +669,13 @@ export function RoutinesScreen() {
     const routineRepo = container.resolve<RoutineRepository>("routineRepository")
     if (!routineRepo) return
     if (id != null) {
-      await routineRepo.update({ ...data, id })
+      const existing = routines.find((r) => r.id === id)
+      await routineRepo.update({ ...data, id, sort_order: existing?.sort_order ?? 0 })
     } else {
       await routineRepo.create(data)
     }
     loadData()
-  }, [loadData])
+  }, [loadData, routines])
 
   const handleDelete = useCallback(async (id: number) => {
     setSheetOpen(false)
@@ -466,6 +684,15 @@ export function RoutinesScreen() {
     await routineRepo.delete(id)
     loadData()
   }, [loadData])
+
+  const handleReorder = useCallback(async (updates: { id: number; sort_order: number }[]) => {
+    const routineRepo = container.resolve<RoutineRepository>("routineRepository")
+    if (!routineRepo) return
+    await routineRepo.updateSortOrders(updates)
+    loadData()
+  }, [loadData])
+
+  const groups = groupBySlot(routines)
 
   return (
     <View style={[$screen, { paddingTop: insets.top }]}>
@@ -490,26 +717,29 @@ export function RoutinesScreen() {
         <EmptyState onAdd={openAdd} />
       ) : (
         <ScrollView
+          scrollEnabled={scrollEnabled}
           contentContainerStyle={[$scrollContent, { paddingBottom: insets.bottom + 32 }]}
           showsVerticalScrollIndicator={false}
         >
           <Text style={$sectionLabel}>
-            {routines.length} {routines.length === 1 ? "routine" : "routines"} · sorted by time
+            {routines.length} {routines.length === 1 ? "routine" : "routines"} · grouped by time
           </Text>
-          <View style={$card}>
-            {routines.map((r, i) => (
-              <RoutineRow
-                key={String(r.id)}
-                routine={r}
-                category={r.category_id != null ? categoryMap.get(r.category_id) : undefined}
-                isFirst={i === 0}
-                onPress={openEdit}
-              />
-            ))}
-          </View>
+
+          {groups.map((group) => (
+            <DraggableRoutineGroup
+              key={group.slot ? `${group.slot.start}-${group.slot.end}` : "other"}
+              slot={group.slot}
+              label={group.label}
+              items={group.items}
+              categoryMap={categoryMap}
+              onEdit={openEdit}
+              onReorder={handleReorder}
+              setScrollEnabled={setScrollEnabled}
+            />
+          ))}
 
           <Text style={$hint}>
-            Tap any routine to edit its label, amount, category, or schedule.
+            Tap a routine to edit · drag ≡ to reorder within a time slot
           </Text>
         </ScrollView>
       )}
@@ -569,29 +799,73 @@ const $sectionLabel: TextStyle = {
   color: ink3, fontFamily: typography.primary.normal,
 }
 
-// ---- Card + rows -----------------------------------------------------------
+// ---- Group section ---------------------------------------------------------
 
-const $card: ViewStyle = {
+const $groupSection: ViewStyle = {
+  gap: spacing.s2,
+}
+
+const $slotHeaderRow: ViewStyle = {
+  flexDirection: "row",
+  alignItems: "center",
+  gap: spacing.s2,
+}
+
+const $slotHeaderLabel: TextStyle = {
+  fontSize: 13, color: ink2,
+  fontFamily: typography.primary.semiBold,
+}
+
+const $slotHeaderTime: TextStyle = {
+  fontSize: 11, color: ink4,
+  fontFamily: typography.primary.normal,
+}
+
+const $slotHint: TextStyle = {
+  fontSize: 10, color: ink4,
+  fontFamily: typography.primary.normal,
+  marginLeft: "auto",
+}
+
+// ---- Group card + rows -----------------------------------------------------
+
+const $groupCard: ViewStyle = {
   backgroundColor: card,
   borderRadius: radii.lg,
   borderWidth: 1,
   borderColor: hairline,
   ...elevation.card,
-  overflow: "hidden",
+  overflow: "visible", // allow dragged row shadow to escape the card bounds
 }
 
-const $row: ViewStyle = {
+const $rowOuter: ViewStyle = {
   flexDirection: "row",
   alignItems: "center",
-  paddingVertical: spacing.s3 + 2,
-  paddingHorizontal: spacing.s4,
-  gap: spacing.s3,
   backgroundColor: card,
+  borderRadius: radii.md,
 }
 
 const $rowBorder: ViewStyle = {
   borderTopWidth: 1,
   borderTopColor: hairline,
+}
+
+const $rowDragging: ViewStyle = {
+  backgroundColor: paper2,
+  shadowColor: "#000",
+  shadowOffset: { width: 0, height: 4 },
+  shadowOpacity: 0.12,
+  shadowRadius: 8,
+  elevation: 6,
+}
+
+const $rowInner: ViewStyle = {
+  flex: 1,
+  flexDirection: "row",
+  alignItems: "center",
+  paddingVertical: spacing.s3 + 2,
+  paddingLeft: spacing.s4,
+  gap: spacing.s3,
 }
 
 const $rowPressed: ViewStyle = { backgroundColor: paper2 }
@@ -605,23 +879,44 @@ const $rowContent: ViewStyle = { flex: 1, gap: 2 }
 const $rowTop: ViewStyle = {
   flexDirection: "row",
   justifyContent: "space-between",
-  alignItems: "baseline",
+  alignItems: "center",
+}
+
+const $routineNameRow: ViewStyle = {
+  flexDirection: "row",
+  alignItems: "center",
+  gap: spacing.s2,
+  flex: 1,
+}
+
+const $orderBadge: ViewStyle = {
+  width: 18, height: 18, borderRadius: 9,
+  backgroundColor: hairline,
+  alignItems: "center", justifyContent: "center",
+  flexShrink: 0,
+}
+
+const $orderBadgeText: TextStyle = {
+  fontSize: 10, color: ink3,
+  fontFamily: typography.primary.semiBold,
+  lineHeight: 18,
 }
 
 const $rowBottom: ViewStyle = {
   flexDirection: "row",
-  justifyContent: "space-between",
   alignItems: "center",
 }
 
 const $routineName: TextStyle = {
   fontSize: 15, color: ink,
   fontFamily: typography.primary.medium,
+  flex: 1,
 }
 
 const $routineAmount: TextStyle = {
   fontSize: 14, color: ink,
   fontFamily: typography.mono.normal,
+  flexShrink: 0,
 }
 
 const $routineMeta: TextStyle = {
@@ -629,9 +924,16 @@ const $routineMeta: TextStyle = {
   fontFamily: typography.primary.normal,
 }
 
-const $routineDays: TextStyle = {
-  fontSize: 11, color: ink4,
-  fontFamily: typography.primary.normal,
+const $dragHandleWrap: ViewStyle = {
+  width: 44, height: 44,
+  alignItems: "center", justifyContent: "center",
+  flexShrink: 0,
+}
+
+const $chevronWrap: ViewStyle = {
+  width: 36, height: 44,
+  alignItems: "center", justifyContent: "center",
+  flexShrink: 0,
 }
 
 // ---- Hint ------------------------------------------------------------------
@@ -771,8 +1073,6 @@ const $catPill: ViewStyle = {
   backgroundColor: card,
   borderWidth: 1, borderColor: hairline,
 }
-
-const $catDot: ViewStyle = { width: 8, height: 8, borderRadius: 4 }
 
 const $catPillText: TextStyle = {
   fontSize: 13, color: ink2,

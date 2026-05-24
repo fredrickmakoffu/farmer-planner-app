@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   AppWidgetProviderInfo for the Tapp home-screen widget.
-  minWidth/Height = 2×2 cells (110dp each on standard grids).
+  minWidth/Height = 1×1 cell (40dp on standard grids).
   updatePeriodMillis = 0: the app pushes updates via TappWidgetModule.setWidgetData;
   periodic polling is disabled to preserve battery.
 -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
-    android:minWidth="110dp"
-    android:minHeight="110dp"
-    android:targetCellWidth="2"
-    android:targetCellHeight="2"
+    android:minWidth="40dp"
+    android:minHeight="40dp"
+    android:targetCellWidth="1"
+    android:targetCellHeight="1"
     android:updatePeriodMillis="0"
     android:initialLayout="@layout/tapp_widget"
     android:widgetCategory="home_screen"
