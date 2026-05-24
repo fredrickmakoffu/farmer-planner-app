@@ -10,7 +10,7 @@ export const queryClient = createQueryClient()
 export async function initAppBootstrap(): Promise<void> {
   console.debug("BOOTSTRAP: initAppBootstrap() starting")
 
-  const db = initDatabase()
+  const db = await initDatabase()
   console.debug("BOOTSTRAP: initDatabase() finished")
 
   container.register("database", db)
