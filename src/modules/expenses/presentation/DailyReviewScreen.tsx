@@ -214,9 +214,10 @@ function EventRow({
             )}
           </View>
         </View>
-        <Text style={$rowMeta}>
+        <Text style={$rowMeta} numberOfLines={2}>
           {formatTimestamp(event.created_at)}
           {event.category_id == null ? " · no category" : ""}
+          {event.notes ? " · " + event.notes : ""}
         </Text>
       </View>
     </Pressable>
@@ -326,11 +327,11 @@ export function DailyReviewScreen() {
   }, [loadData])
 
   const handleSave = useCallback(
-    async (id: number, amount: number, categoryId: number | null) => {
+    async (id: number, amount: number, categoryId: number | null, notes: string | null) => {
       const expenseRepo = container.resolve<ExpenseEventRepository>("expenseEventRepository")
       const sync = container.resolve<any>("syncEngine")
       if (!expenseRepo) return
-      await updateExpense(expenseRepo, id, amount, categoryId, sync)
+      await updateExpense(expenseRepo, id, amount, categoryId, sync, notes)
       loadData()
     },
     [loadData],

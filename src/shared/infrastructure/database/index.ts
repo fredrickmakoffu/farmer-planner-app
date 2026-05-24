@@ -78,6 +78,7 @@ export function initDatabase(): Db {
     `ALTER TABLE routines ADD COLUMN default_amount INTEGER NOT NULL DEFAULT 0;`,
     `ALTER TABLE expense_events ADD COLUMN confirmed_at INTEGER;`,
     `ALTER TABLE routines ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0;`,
+    `ALTER TABLE expense_events ADD COLUMN notes TEXT;`,
   ]
 
   for (const sql of alterStatements) {

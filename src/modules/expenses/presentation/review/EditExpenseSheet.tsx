@@ -52,7 +52,7 @@ type Props = {
   event: ExpenseEvent | null
   categories: Category[]
   onClose: () => void
-  onSave: (id: number, amount: number, categoryId: number | null) => void
+  onSave: (id: number, amount: number, categoryId: number | null, notes: string | null) => void
   onDelete: (id: number) => void
 }
 
@@ -64,12 +64,14 @@ export function EditExpenseSheet({ visible, event, categories, onClose, onSave, 
 
   const [amountText, setAmountText] = useState("")
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null)
+  const [notes, setNotes] = useState("")
   const [error, setError] = useState("")
 
   useEffect(() => {
     if (visible && event) {
       setAmountText(String(event.amount ?? ""))
       setSelectedCategoryId(event.category_id as number | null ?? null)
+      setNotes(event.notes ?? "")
       setError("")
     }
     Animated.timing(slideAnim, {
@@ -86,7 +88,7 @@ export function EditExpenseSheet({ visible, event, categories, onClose, onSave, 
       return
     }
     if (event?.id == null) return
-    onSave(event.id, Math.round(parsed), selectedCategoryId)
+    onSave(event.id, Math.round(parsed), selectedCategoryId, notes.trim() || null)
     onClose()
   }
 
@@ -176,6 +178,20 @@ export function EditExpenseSheet({ visible, event, categories, onClose, onSave, 
               )
             })}
           </ScrollView>
+
+          {/* Notes */}
+          <Text style={[$fieldLabel, { marginTop: spacing.s4 }]}>Note (optional)</Text>
+          <TextInput
+            style={$notesInput}
+            value={notes}
+            onChangeText={setNotes}
+            placeholder="What was this for?"
+            placeholderTextColor={ink4}
+            multiline
+            maxLength={200}
+            returnKeyType="done"
+            blurOnSubmit
+          />
 
           {/* Actions */}
           <View style={$actions}>
@@ -315,6 +331,20 @@ const $categoryPillTextActive: TextStyle = {
 
 const $catDot: ViewStyle = {
   width: 7, height: 7, borderRadius: 4,
+}
+
+const $notesInput: TextStyle = {
+  borderWidth: 1,
+  borderColor: hairline,
+  borderRadius: radii.md,
+  backgroundColor: paper,
+  paddingHorizontal: spacing.s4,
+  paddingVertical: spacing.s3,
+  fontSize: 15,
+  color: ink,
+  fontFamily: typography.primary.normal,
+  minHeight: 72,
+  textAlignVertical: "top",
 }
 
 const $actions: ViewStyle = {

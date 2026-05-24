@@ -7,11 +7,12 @@ export async function updateExpense(
   amount: number,
   categoryId: number | null,
   syncEngine?: SyncEngine,
+  notes?: string | null,
 ): Promise<void> {
-  await repo.update(id, amount, categoryId)
+  await repo.update(id, amount, categoryId, notes)
   try {
     if (syncEngine) {
-      await syncEngine.enqueue({ type: "update_expense", payload: { id, amount, categoryId } })
+      await syncEngine.enqueue({ type: "update_expense", payload: { id, amount, categoryId, notes } })
     }
   } catch {
     // ignore enqueue errors
