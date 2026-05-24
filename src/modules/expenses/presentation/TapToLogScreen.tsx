@@ -162,13 +162,19 @@ export function TapToLogScreen() {
       routineRepo ? routineRepo.findAll() : Promise.resolve([]),
     ])
 
-    const todayTotal = allEvents.reduce((sum, e) => sum + (e.amount ?? 0), 0)
+    const now = new Date()
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+    const todayEnd = todayStart + 86_400_000
+    const todayEvents = allEvents.filter(
+      (e) => e.created_at >= todayStart && e.created_at < todayEnd,
+    )
+
+    const todayTotal = todayEvents.reduce((sum, e) => sum + (e.amount ?? 0), 0)
     setTotal(todayTotal)
     setPrediction({ amount: result.defaultAmount, source: result.source, routineName: result.routineName })
     setAllCategories(cats)
     setAllRoutines(routines)
 
-    const now = new Date()
     setNowMinutes(now.getHours() * 60 + now.getMinutes())
 
     if (result.categoryId != null) {
@@ -176,13 +182,17 @@ export function TapToLogScreen() {
       setPredictedCategory(cat ?? null)
     }
 
-    if (allEvents.length > 0) {
-      const latest = allEvents[allEvents.length - 1]
+    // findAll returns DESC order; todayEvents[0] is the most recent today
+    if (todayEvents.length > 0) {
+      const latest = todayEvents[0]
       setLastEvent(latest)
       if (latest.category_id != null) {
         const cat = await categoryRepo.findById(latest.category_id as number)
         setLastCategory(cat ?? null)
       }
+    } else {
+      setLastEvent(null)
+      setLastCategory(null)
     }
   }, [])
 
