@@ -8,9 +8,12 @@ import {
   View,
   ViewStyle,
 } from "react-native"
+import { useRouter } from "expo-router"
 import { Ionicons } from "@expo/vector-icons"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 
+import { FLOATING_NAV_CLEARANCE } from "@/app/(tabs)/_layout"
+import { loadFarmerProfile } from "@/modules/onboarding"
 import {
   card,
   cardBorder,
@@ -22,8 +25,8 @@ import {
   ink2,
   ink3,
   ink4,
-  paper,
   paper2,
+  paperCool,
   radii,
   spacing,
   statusBad,
@@ -34,8 +37,6 @@ import {
   statusWarnBg,
 } from "@/theme/tapp-tokens"
 import { typography } from "@/theme/typography"
-import { loadFarmerProfile } from "@/modules/onboarding"
-import { FLOATING_NAV_CLEARANCE } from "@/app/(tabs)/_layout"
 
 import {
   MOCK_ACTIVITIES,
@@ -70,7 +71,10 @@ function getWeekDays() {
     date.setDate(monday.getDate() + i)
     const isToday = date.toDateString() === today.toDateString()
     const isPast = !isToday && date < today
-    return { abbrev, dateNum: date.getDate(), isToday, isPast }
+    const y = date.getFullYear()
+    const m = String(date.getMonth() + 1).padStart(2, "0")
+    const d = String(date.getDate()).padStart(2, "0")
+    return { abbrev, dateNum: date.getDate(), isToday, isPast, dateStr: `${y}-${m}-${d}` }
   })
 }
 
@@ -98,6 +102,7 @@ function difficultyColor(difficulty: Difficulty): { bg: string; text: string } {
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets()
+  const router = useRouter()
   const profile = loadFarmerProfile()
 
   const firstName = profile?.name?.split(" ")[0] ?? "Farmer"
@@ -129,14 +134,17 @@ export default function HomeScreen() {
         {/* Week strip */}
         <View style={$weekStrip}>
           {weekDays.map((day) => (
-            <View key={day.abbrev} style={$dayItem}>
+            <TouchableOpacity
+              key={day.abbrev}
+              style={$dayItem}
+              onPress={() =>
+                router.push({ pathname: "/(tabs)/plan", params: { date: day.dateStr } })
+              }
+              activeOpacity={0.7}
+            >
               <Text style={$dayLabel}>{day.abbrev}</Text>
               <View
-                style={[
-                  $dayCircle,
-                  day.isToday && $dayCircleToday,
-                  day.isPast && $dayCirclePast,
-                ]}
+                style={[$dayCircle, day.isToday && $dayCircleToday, day.isPast && $dayCirclePast]}
               >
                 {day.isPast ? (
                   <Ionicons name="checkmark" size={14} color={forest500} />
@@ -144,7 +152,7 @@ export default function HomeScreen() {
                   <Text style={day.isToday ? $dayNumToday : $dayNum}>{day.dateNum}</Text>
                 )}
               </View>
-            </View>
+            </TouchableOpacity>
           ))}
         </View>
 
@@ -164,7 +172,10 @@ export default function HomeScreen() {
             <Text style={$weatherTempLabel}>Today</Text>
           </View>
         </View>
+      </View>
 
+      {/* ── Lower section: plans + activities on paper bg ── */}
+      <View style={$lowerSection}>
         {/* AI Insight card */}
         <View style={$insightCard}>
           <View style={$insightIconWrap}>
@@ -175,10 +186,7 @@ export default function HomeScreen() {
             <Text style={$insightText}>{MOCK_AI_INSIGHT.text}</Text>
           </View>
         </View>
-      </View>
 
-      {/* ── Lower section: plans + activities on paper bg ── */}
-      <View style={$lowerSection}>
         {/* Farm Plan Templates */}
         <View style={$sectionHeaderRow}>
           <Text style={$sectionTitle}>Farm Plan Templates</Text>
@@ -266,7 +274,7 @@ function ActivityCard({ activity }: { activity: TodayActivity }) {
 
 const $root: ViewStyle = {
   flex: 1,
-  backgroundColor: paper,
+  backgroundColor: paperCool,
 }
 
 // Hero card — white, rounded bottom corners
@@ -437,6 +445,7 @@ const $insightCard: ViewStyle = {
   flexDirection: "row",
   alignItems: "flex-start",
   padding: spacing.s4,
+  marginBottom: spacing.s4,
 }
 
 const $insightIconWrap: ViewStyle = {

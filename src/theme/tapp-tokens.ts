@@ -5,6 +5,7 @@
 // ---------------------------------------------------------------------------
 export const paper = "#FAF8F4"
 export const paper2 = "#F5F2EC"
+export const paperCool = "hsl(210, 1%, 98%)"   // cool near-white for Home screen bg
 export const card = "#FFFFFF"
 export const cardBorder = "rgba(196, 185, 172, 0.7)"
 
@@ -72,9 +73,9 @@ export const radii = {
 // ---------------------------------------------------------------------------
 export const elevation = {
   card: {
-    shadowColor: "#1F1C18",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.07,
     shadowRadius: 8,
     elevation: 2,
   },

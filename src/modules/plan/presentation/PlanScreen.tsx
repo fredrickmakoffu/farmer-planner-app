@@ -1,5 +1,6 @@
-import React, { useState } from "react"
+import React, { useEffect, useState } from "react"
 import {
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -10,16 +11,20 @@ import {
   View,
   ViewStyle,
 } from "react-native"
+import { useLocalSearchParams } from "expo-router"
 import { Ionicons } from "@expo/vector-icons"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 
+import {
+  FLOATING_NAV_BOTTOM_GAP,
+  FLOATING_NAV_HEIGHT,
+} from "@/app/(tabs)/_layout"
 import {
   card,
   cardBorder,
   elevation,
   forest50,
   forest500,
-  forest600,
   hairline,
   ink,
   ink2,
@@ -36,32 +41,40 @@ import {
   statusWarnBg,
 } from "@/theme/tapp-tokens"
 import { typography } from "@/theme/typography"
-import { FLOATING_NAV_CLEARANCE, FLOATING_NAV_BOTTOM_GAP, FLOATING_NAV_HEIGHT } from "@/app/(tabs)/_layout"
 
-import {
-  MOCK_BOT_GREETING,
-  MOCK_CHAT_SUGGESTIONS,
-  MOCK_PLAN_ACTIVITIES,
-  type PlanActivity,
-  type Priority,
-} from "../infrastructure/mock-data"
+import type { PlanActivity, Priority } from "../domain/entities/activity"
+import { getActivitiesForDay } from "../infrastructure/activities-service"
+import { MOCK_BOT_GREETING, MOCK_CHAT_SUGGESTIONS } from "../infrastructure/mock-data"
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function priorityColor(priority: Priority): { bg: string; text: string } {
-  if (priority === "High") return { bg: statusBadBg, text: statusBad }
-  if (priority === "Medium") return { bg: statusWarnBg, text: statusWarn }
-  return { bg: statusGoodBg, text: statusGood }
+function formatTodayStr(): string {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, "0")
+  const day = String(d.getDate()).padStart(2, "0")
+  return `${y}-${m}-${day}`
 }
 
-function getTodayLabel(): string {
-  return new Date().toLocaleDateString("en-US", {
+function parseDateStr(dateStr: string): Date {
+  const [y, m, d] = dateStr.split("-").map(Number)
+  return new Date(y, m - 1, d)
+}
+
+function getDateLabel(date: Date): string {
+  return date.toLocaleDateString("en-US", {
     weekday: "long",
     month: "long",
     day: "numeric",
   })
+}
+
+function priorityColor(priority: Priority): { bg: string; text: string } {
+  if (priority === "High") return { bg: statusBadBg, text: statusBad }
+  if (priority === "Medium") return { bg: statusWarnBg, text: statusWarn }
+  return { bg: statusGoodBg, text: statusGood }
 }
 
 // ---------------------------------------------------------------------------
@@ -70,14 +83,38 @@ function getTodayLabel(): string {
 
 export default function PlanScreen() {
   const insets = useSafeAreaInsets()
-  const [activities, setActivities] = useState<PlanActivity[]>(MOCK_PLAN_ACTIVITIES)
-  const [expandedId, setExpandedId] = useState<string | null>("plan-1")
+  const { date: dateParam } = useLocalSearchParams<{ date?: string }>()
+
+  const dateStr = typeof dateParam === "string" ? dateParam : formatTodayStr()
+  const dateLabel = getDateLabel(parseDateStr(dateStr))
+
+  const [loadStatus, setLoadStatus] = useState<"loading" | "ready">("loading")
+  const [activities, setActivities] = useState<PlanActivity[]>([])
+  const [expandedId, setExpandedId] = useState<string | null>(null)
   const [chatOpen, setChatOpen] = useState(false)
   const [chatInput, setChatInput] = useState("")
 
+  useEffect(() => {
+    let cancelled = false
+    setLoadStatus("loading")
+    setExpandedId(null)
+    setChatOpen(false)
+
+    getActivitiesForDay(dateStr).then((acts) => {
+      if (!cancelled) {
+        setActivities(acts)
+        setLoadStatus("ready")
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [dateStr])
+
   const doneCount = activities.filter((a) => a.done).length
   const totalCount = activities.length
-  const percentage = Math.round((doneCount / totalCount) * 100)
+  const percentage = totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0
 
   const aiPanelBottom = insets.bottom + FLOATING_NAV_BOTTOM_GAP + FLOATING_NAV_HEIGHT
   const collapsedPanelHeight = 56
@@ -86,9 +123,7 @@ export default function PlanScreen() {
     aiPanelBottom + (chatOpen ? expandedPanelHeight : collapsedPanelHeight) + spacing.s4
 
   function toggleDone(id: string) {
-    setActivities((prev) =>
-      prev.map((a) => (a.id === id ? { ...a, done: !a.done } : a)),
-    )
+    setActivities((prev) => prev.map((a) => (a.id === id ? { ...a, done: !a.done } : a)))
   }
 
   function toggleExpanded(id: string) {
@@ -110,15 +145,19 @@ export default function PlanScreen() {
       >
         {/* ── Header ── */}
         <Text style={$planLabel}>PLAN ON A PAGE</Text>
-        <Text style={$dateHeading}>{getTodayLabel()}</Text>
+        <Text style={$dateHeading}>{dateLabel}</Text>
 
         {/* ── Daily Progress card ── */}
         <View style={$progressCard}>
           <View style={$progressCardHeader}>
             <Text style={$progressCardTitle}>Daily Progress</Text>
-            <Text style={$progressDoneText}>
-              {doneCount}/{totalCount} done
-            </Text>
+            {loadStatus === "ready" ? (
+              <Text style={$progressDoneText}>
+                {doneCount}/{totalCount} done
+              </Text>
+            ) : (
+              <ActivityIndicator size="small" color={forest500} />
+            )}
           </View>
           <View style={$progressBarBg}>
             <View style={[$progressBarFill, { width: `${percentage}%` as any }]} />
@@ -126,28 +165,29 @@ export default function PlanScreen() {
           <Text style={$progressPercent}>{percentage}% complete</Text>
         </View>
 
-        {/* ── Today's Activities ── */}
+        {/* ── Activities ── */}
         <Text style={$sectionTitle}>Today's Activities</Text>
 
-        {activities.map((activity) => (
-          <ActivityRow
-            key={activity.id}
-            activity={activity}
-            isExpanded={expandedId === activity.id}
-            onToggleDone={() => toggleDone(activity.id)}
-            onToggleExpand={() => toggleExpanded(activity.id)}
-          />
-        ))}
+        {loadStatus === "loading" ? (
+          <View style={$loadingContainer}>
+            <ActivityIndicator size="large" color={forest500} />
+            <Text style={$loadingText}>Loading activities…</Text>
+          </View>
+        ) : (
+          activities.map((activity) => (
+            <ActivityRow
+              key={activity.id}
+              activity={activity}
+              isExpanded={expandedId === activity.id}
+              onToggleDone={() => toggleDone(activity.id)}
+              onToggleExpand={() => toggleExpanded(activity.id)}
+            />
+          ))
+        )}
       </ScrollView>
 
       {/* ── AI Farm Assistant panel (fixed above tab bar) ── */}
-      <View
-        style={[
-          $aiPanel,
-          { bottom: aiPanelBottom },
-          chatOpen && $aiPanelExpanded,
-        ]}
-      >
+      <View style={[$aiPanel, { bottom: aiPanelBottom }, chatOpen && $aiPanelExpanded]}>
         <TouchableOpacity
           style={$aiPanelHeader}
           onPress={() => setChatOpen((v) => !v)}
@@ -168,12 +208,10 @@ export default function PlanScreen() {
 
         {chatOpen && (
           <>
-            {/* Bot greeting */}
             <View style={$chatMessageBubble}>
               <Text style={$chatMessageText}>{MOCK_BOT_GREETING}</Text>
             </View>
 
-            {/* Suggestion chips */}
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -191,7 +229,6 @@ export default function PlanScreen() {
               ))}
             </ScrollView>
 
-            {/* Input row */}
             <View style={$chatInputRow}>
               <TextInput
                 style={$chatInput}
@@ -237,9 +274,7 @@ function ActivityRow({
 
   return (
     <View style={[$activityCard, isExpanded && $activityCardExpanded]}>
-      {/* Main row */}
       <View style={$activityMainRow}>
-        {/* Checkbox */}
         <TouchableOpacity
           style={[$checkbox, activity.done && $checkboxDone]}
           onPress={onToggleDone}
@@ -248,20 +283,15 @@ function ActivityRow({
           {activity.done && <Ionicons name="checkmark" size={14} color="#FFFFFF" />}
         </TouchableOpacity>
 
-        {/* Icon */}
         <View style={$activityIconCircle}>
           <Text style={$activityIcon}>{activity.icon}</Text>
         </View>
 
-        {/* Text */}
         <View style={$activityBody}>
-          <Text style={[activity.done ? $activityNameDone : $activityName]}>
-            {activity.name}
-          </Text>
+          <Text style={activity.done ? $activityNameDone : $activityName}>{activity.name}</Text>
           <Text style={$activityDuration}>⏱ {activity.durationMinutes} min</Text>
         </View>
 
-        {/* Priority + expand chevron */}
         <Text style={[$priorityText, { color: p.text }]}>{activity.priority}</Text>
         <TouchableOpacity onPress={onToggleExpand} hitSlop={8} style={$chevronBtn}>
           <Ionicons
@@ -272,7 +302,6 @@ function ActivityRow({
         </TouchableOpacity>
       </View>
 
-      {/* Expanded section */}
       {isExpanded && activity.aiTip && (
         <View style={$expandedSection}>
           <View style={$aiTipRow}>
@@ -304,7 +333,6 @@ const $scrollContent: ViewStyle = {
   paddingHorizontal: spacing.s5,
 }
 
-// Header
 const $planLabel: TextStyle = {
   fontFamily: typography.primary.bold,
   fontSize: 11,
@@ -322,7 +350,6 @@ const $dateHeading: TextStyle = {
   marginBottom: spacing.s5,
 }
 
-// Progress card
 const $progressCard: ViewStyle = {
   backgroundColor: card,
   borderRadius: radii.xl,
@@ -373,7 +400,6 @@ const $progressPercent: TextStyle = {
   textAlign: "right",
 }
 
-// Section
 const $sectionTitle: TextStyle = {
   fontFamily: typography.primary.bold,
   fontSize: 16,
@@ -381,7 +407,18 @@ const $sectionTitle: TextStyle = {
   marginBottom: spacing.s3,
 }
 
-// Activity card
+const $loadingContainer: ViewStyle = {
+  alignItems: "center",
+  paddingVertical: spacing.s10,
+  gap: spacing.s3,
+}
+
+const $loadingText: TextStyle = {
+  fontFamily: typography.primary.normal,
+  fontSize: 14,
+  color: ink3,
+}
+
 const $activityCard: ViewStyle = {
   backgroundColor: card,
   borderRadius: radii.xl,
@@ -404,7 +441,6 @@ const $activityMainRow: ViewStyle = {
   gap: spacing.s3,
 }
 
-// Checkbox
 const $checkbox: ViewStyle = {
   width: 26,
   height: 26,
@@ -420,7 +456,6 @@ const $checkboxDone: ViewStyle = {
   borderColor: forest500,
 }
 
-// Icon circle
 const $activityIconCircle: ViewStyle = {
   width: 36,
   height: 36,
@@ -469,7 +504,6 @@ const $chevronBtn: ViewStyle = {
   padding: 2,
 }
 
-// Expanded AI tip section
 const $expandedSection: ViewStyle = {
   borderTopWidth: 1,
   borderTopColor: hairline,
@@ -509,7 +543,6 @@ const $toolsText: TextStyle = {
   color: ink3,
 }
 
-// AI Farm Assistant panel
 const $aiPanel: ViewStyle = {
   position: "absolute",
   left: spacing.s4,
@@ -561,7 +594,6 @@ const $aiDot: ViewStyle = {
   backgroundColor: statusGood,
 }
 
-// Chat content
 const $chatMessageBubble: ViewStyle = {
   marginHorizontal: spacing.s4,
   marginBottom: spacing.s3,
